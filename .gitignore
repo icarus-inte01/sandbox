@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.venv/
+venv/
+env/
+
+# Token/Cache
+.kis_token_cache.json
+.cache/
+.session-summary.md
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,52 @@
+regions:
+  north_america:
+    name: "North America"
+    feeds:
+      - url: "http://rss.cnn.com/rss/cnn_topstories.rss"
+        source: "CNN"
+      - url: "https://feeds.bbci.co.uk/news/world/us_and_canada/rss.xml"
+        source: "BBC"
+      - url: "https://www.theguardian.com/us-news/rss"
+        source: "The Guardian"
+  europe:
+    name: "Europe"
+    feeds:
+      - url: "https://feeds.bbci.co.uk/news/world/europe/rss.xml"
+        source: "BBC Europe"
+      - url: "https://www.euronews.com/rss"
+        source: "Euronews"
+      - url: "https://rss.dw.com/rdf/rss-en-all"
+        source: "DW"
+  asia:
+    name: "Asia"
+    feeds:
+      - url: "https://www3.nhk.or.jp/rss/news/cat0.xml"
+        source: "NHK"
+      - url: "https://www.scmp.com/rss/4/feed"
+        source: "SCMP"
+      - url: "https://feeds.bbci.co.uk/news/world/asia/rss.xml"
+        source: "BBC Asia"
+  middle_east:
+    name: "Middle East"
+    feeds:
+      - url: "https://www.aljazeera.com/xml/rss/all.xml"
+        source: "Al Jazeera"
+      - url: "https://www.jpost.com/Rss/RssFeedsHeadlines.aspx"
+        source: "Jerusalem Post"
+  latin_america:
+    name: "Latin America"
+    feeds:
+      - url: "https://www.theguardian.com/world/americas/rss"
+        source: "The Guardian"
+      - url: "https://feeds.bbci.co.uk/portuguese/articles/rss.xml"
+        source: "BBC Brasil"
+  africa:
+    name: "Africa"
+    feeds:
+      - url: "https://feeds.bbci.co.uk/news/world/africa/rss.xml"
+        source: "BBC Africa"
+  oceania:
+    name: "Oceania"
+    feeds:
+      - url: "https://www.abc.net.au/news/feed/51120/rss.xml"
+        source: "ABC Australia"
