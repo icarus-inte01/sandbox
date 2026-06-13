@@ -1,0 +1,11 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Token cache (contains access_token)
+.kis_token_cache.json
+
+# OS files
+.DS_Store
+Thumbs.db
