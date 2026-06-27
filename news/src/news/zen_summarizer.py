@@ -230,7 +230,6 @@ def summarize_region(
                     {"role": "user", "content": user_msg},
                 ],
             )
-            break
         except requests.HTTPError as exc:
             last_err = str(exc)
             status = exc.response.status_code if exc.response is not None else 0
@@ -238,6 +237,7 @@ def summarize_region(
                 wait = attempt * 10
                 logger.warning("Zen API error %d on %s (attempt %d/3), waiting %ds", status, region_key, attempt, wait)
                 time.sleep(wait)
+                continue
             else:
                 logger.error("Zen API call failed for %s: %s", region_key, exc)
                 return {
@@ -255,49 +255,54 @@ def summarize_region(
                 "articles": [],
                 "error": last_err,
             }
+        else:
+            # API call succeeded — now parse the response
+            try:
+                content = data["choices"][0]["message"]["content"]
+            except (KeyError, IndexError, TypeError):
+                last_err = "Empty response from Zen API"
+                logger.warning("%s (attempt %d/3)", last_err, attempt)
+                if attempt < 3:
+                    time.sleep(attempt * 5)
+                continue
+
+            if not content:
+                content = "{}"
+
+            parsed = None
+            try:
+                parsed = json.loads(content)
+            except json.JSONDecodeError:
+                logger.warning("JSON parse failed for %s (attempt %d/3), trying regex fallback", region_key, attempt)
+                logger.info("Raw response (first 500): %s", content[:500])
+                match = re.search(r"\{.*\}", content, re.DOTALL)
+                if match:
+                    try:
+                        parsed = json.loads(match.group())
+                    except json.JSONDecodeError:
+                        last_err = "Failed to parse model response as JSON"
+                        logger.warning("%s (attempt %d/3)", last_err, attempt)
+                        if attempt < 3:
+                            time.sleep(attempt * 5)
+                        continue
+
+            if parsed is not None:
+                break
+            else:
+                # No JSON found at all — retry unless this was the last attempt
+                last_err = "No JSON found in model response"
+                logger.warning("%s for %s (attempt %d/3): %s", last_err, region_key, attempt, content[:200])
+                if attempt < 3:
+                    time.sleep(attempt * 5)
+                continue
     else:
+        # All 3 attempts exhausted
         return {
             "region": region_key,
             "region_name": region_name,
             "articles": [],
             "error": last_err,
         }
-
-    try:
-        content = data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError):
-        return {
-            "region": region_key,
-            "region_name": region_name,
-            "articles": [],
-            "error": "Empty response from Zen API",
-        }
-
-    if not content:
-        content = "{}"
-
-    try:
-        parsed = json.loads(content)
-    except json.JSONDecodeError:
-        logger.warning("JSON parse failed for %s, trying regex fallback", region_key)
-        match = re.search(r"\{.*\}", content, re.DOTALL)
-        if match:
-            try:
-                parsed = json.loads(match.group())
-            except json.JSONDecodeError:
-                return {
-                    "region": region_key,
-                    "region_name": region_name,
-                    "articles": [],
-                    "error": "Failed to parse model response as JSON",
-                }
-        else:
-            return {
-                "region": region_key,
-                "region_name": region_name,
-                "articles": [],
-                "error": "No JSON found in model response",
-            }
 
     articles_out = parsed.get("articles", [])
     for art in articles_out:
