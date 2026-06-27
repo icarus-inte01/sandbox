@@ -82,11 +82,24 @@ class LHCollector(BaseCollector):
             "type": "json",
         }
         resp = self.client.fetch(LH_ANNOUNCE_URL, params)
-        # apis.data.go.kr 응답은 배열일 수도 있고 표준 response>body 구조일 수도 있음
+
+        # [{"dsSch": [실제항목들]}] 포맷 — LH REST API가 배열로 감싸서 반환
         if isinstance(resp, list):
-            if resp:
-                logger.info("LH API list response — first item keys: %s", list(resp[0].keys()))
+            if resp and isinstance(resp[0], dict) and "dsSch" in resp[0]:
+                items = resp[0]["dsSch"]
+                logger.info("LH dsSch format — %d items for code %s", len(items), upp_ais_tp_cd)
+                if items:
+                    logger.info("LH dsSch first item keys: %s", list(items[0].keys()))
+                return items
             return resp
+
+        # {"dsSch": [...], "response": {...}} — 혼합 구조
+        if isinstance(resp, dict) and "dsSch" in resp:
+            items = resp["dsSch"]
+            logger.info("LH dsSch format (dict) — %d items for code %s", len(items), upp_ais_tp_cd)
+            return items
+
+        # 표준 response > header > body > items > item 구조
         header = resp.get("response", {}).get("header", {})
         if header.get("resultCode") != "00":
             logger.warning("LH API error (%s): %s %s", upp_ais_tp_cd,
@@ -98,8 +111,7 @@ class LHCollector(BaseCollector):
         if isinstance(item_list, dict):
             item_list = [item_list]
         if item_list:
-            logger.info("LH API standard response — first item keys: %s", list(item_list[0].keys()))
-            logger.info("LH API first item sample: %s", str(item_list[0])[:500])
+            logger.info("LH API standard response — %d items for code %s", len(item_list), upp_ais_tp_cd)
         return item_list
 
     def collect_land(
@@ -121,17 +133,7 @@ class LHCollector(BaseCollector):
             params: dict[str, Any] = {"page": 1, "perPage": 100}
             resp = self.client.fetch(LH_LAND_URL, params)
             data = self.client._extract_data(resp)
-            if data:
-                logger.info("LH land API — first item keys: %s", list(data[0].keys()))
-                logger.info("LH land API first item sample: %s", str(data[0])[:500])
-            result = [self._to_listing(item, "land") for item in data]
-            if result:
-                logger.info("LH land collect — first listing: name=%r region=%r price=%r units=%r date=%r",
-                            result[0].name, result[0].region, result[0].price,
-                            result[0].units, result[0].announcement_date)
-                logger.info("LH land collect — total %d items, 5 names: %s",
-                            len(result), [r.name for r in result[:5]])
-            return result
+            return [self._to_listing(item, "land") for item in data]
         except Exception as e:
             logger.error("LH land API call failed: %s", e)
             return self._mock_collect_land()
@@ -245,21 +247,23 @@ class LHCollector(BaseCollector):
     def _to_listing(self, item: dict[str, Any], category: str) -> SaleListing:
         """API 응답을 SaleListing으로 변환.
 
-        세 가지 입력 형식을 처리:
-        - LH 분양임대공고문 API: PAN_NM, CNP_CD_NM, PAN_NT_ST_DT 등
+        네 가지 입력 형식을 처리:
+        - LH dsSch/표준 응답: pan_nm, cnp_cd_nm, pan_dt 등 (소문자 snake_case)
         - LH 용지공고 API (15072459): 공고명, 매물위치, 공고게시일 등 (한글 키)
+        - 구형 표준 응답: PAN_NM, CNP_CD_NM 등 (대문자)
         - Mock 데이터: pblanc_nm, region, announce_date 등
         """
         name = (
-            item.get("PAN_NM") or item.get("공고명")
+            item.get("pan_nm") or item.get("PAN_NM") or item.get("공고명")
             or item.get("pblanc_nm") or "알 수 없음"
         )
         region = (
-            item.get("CNP_CD_NM") or item.get("매물위치")
+            item.get("cnp_cd_nm") or item.get("CNP_CD_NM") or item.get("매물위치")
             or item.get("사업지구") or item.get("region", "")
         )
         announce_date = (
-            item.get("PAN_NT_ST_DT") or item.get("공고게시일")
+            item.get("pan_dt") or item.get("pan_nt_st_dt")
+            or item.get("PAN_NT_ST_DT") or item.get("공고게시일")
             or item.get("announce_date", "")
         )
         if announce_date and "." in announce_date:
@@ -268,16 +272,27 @@ class LHCollector(BaseCollector):
         if category == "land":
             supply_type = SupplyType.LAND
         else:
-            atype = item.get("UPP_AIS_TP_CD_NM") or item.get("announce_type", "")
+            atype = (
+                item.get("ais_tp_cd_nm") or item.get("UPP_AIS_TP_CD_NM")
+                or item.get("announce_type", "")
+            )
             if "행복" in atype:
                 supply_type = SupplyType.PUBLIC
             else:
                 supply_type = SupplyType.APT
 
         units = int(item.get("total_units", 0) or 0)
-        price = int(
-            item.get("공급예정금액") or item.get("supply_price", 0) or 0
+        # LH 용지 API: 공급예정금액(원) → 만원 변환
+        raw_price = (
+            item.get("공급예정금액") or item.get("SPL_XPC_AMT")
+            or item.get("supply_price", 0) or 0
         )
+        if isinstance(raw_price, str) and raw_price.isdigit():
+            price = int(raw_price)
+            if price > 100_000_000:  # 원 단위면 만원으로 변환
+                price //= 10000
+        else:
+            price = int(raw_price)
         builder = item.get("builder", "LH")
 
         return SaleListing(
