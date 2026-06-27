@@ -84,6 +84,8 @@ class LHCollector(BaseCollector):
         resp = self.client.fetch(LH_ANNOUNCE_URL, params)
         # apis.data.go.kr 응답은 배열일 수도 있고 표준 response>body 구조일 수도 있음
         if isinstance(resp, list):
+            if resp:
+                logger.info("LH API list response — first item keys: %s", list(resp[0].keys()))
             return resp
         header = resp.get("response", {}).get("header", {})
         if header.get("resultCode") != "00":
@@ -95,6 +97,9 @@ class LHCollector(BaseCollector):
         item_list = items.get("item", [])
         if isinstance(item_list, dict):
             item_list = [item_list]
+        if item_list:
+            logger.info("LH API standard response — first item keys: %s", list(item_list[0].keys()))
+            logger.info("LH API first item sample: %s", str(item_list[0])[:500])
         return item_list
 
     def collect_land(
@@ -116,6 +121,9 @@ class LHCollector(BaseCollector):
             params: dict[str, Any] = {"page": 1, "perPage": 100}
             resp = self.client.fetch(LH_LAND_URL, params)
             data = self.client._extract_data(resp)
+            if data:
+                logger.info("LH land API — first item keys: %s", list(data[0].keys()))
+                logger.info("LH land API first item sample: %s", str(data[0])[:500])
             return [self._to_listing(item, "land") for item in data]
         except Exception as e:
             logger.error("LH land API call failed: %s", e)
