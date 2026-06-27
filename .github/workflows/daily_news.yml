@@ -87,7 +87,7 @@ jobs:
             (${{ steps.run_script.outputs.exit_code == '0' && 'OK' || 'FAILED' }})
           to: ${{ secrets.EMAIL_TO }}
           from: GitHub Actions
-          # Markdown 본문 → 대부분의 메일 클라이언트가 렌더링 가능
+          convert_markdown: true
           body: |
             ${{ steps.read_output.outputs.digest }}
 
