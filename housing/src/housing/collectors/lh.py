@@ -124,7 +124,14 @@ class LHCollector(BaseCollector):
             if data:
                 logger.info("LH land API — first item keys: %s", list(data[0].keys()))
                 logger.info("LH land API first item sample: %s", str(data[0])[:500])
-            return [self._to_listing(item, "land") for item in data]
+            result = [self._to_listing(item, "land") for item in data]
+            if result:
+                logger.info("LH land collect — first listing: name=%r region=%r price=%r units=%r date=%r",
+                            result[0].name, result[0].region, result[0].price,
+                            result[0].units, result[0].announcement_date)
+                logger.info("LH land collect — total %d items, 5 names: %s",
+                            len(result), [r.name for r in result[:5]])
+            return result
         except Exception as e:
             logger.error("LH land API call failed: %s", e)
             return self._mock_collect_land()
@@ -135,6 +142,12 @@ class LHCollector(BaseCollector):
         results = []
         results.extend(self.collect_apt(mock=mock))
         results.extend(self.collect_land(mock=mock))
+        if results:
+            logger.info("LH collect — first item: name=%r region=%r price=%r units=%r source=%s",
+                        results[0].name, results[0].region, results[0].price,
+                        results[0].units, results[0].source)
+            logger.info("LH collect — total %d items, sample of 3 names: %s",
+                        len(results), [r.name for r in results[:3]])
         return results
 
     def _mock_collect_apt(self) -> list[SaleListing]:
