@@ -49,8 +49,8 @@ SYSTEM_PROMPT = (
     "Japanese, Chinese, Portuguese, Spanish, or any language other than Korean is "
     "strictly forbidden.\n\n"
     'Respond in valid JSON:\n'
-    '{"articles": [{"title": "...", "url": "...", "one_liner": "...", "significance": "..."}]}\n'
-    "Every field must be non-empty. The title must be translated to Korean."
+    '{"articles": [{"index": N, "title": "...", "url": "...", "one_liner": "...", "significance": "..."}]}\n'
+    '"index" is the article number [N] from the provided list (1-based). Every field must be non-empty. The title must be translated to Korean.'
 )
 
 
@@ -172,12 +172,6 @@ def summarize_region(
             "error": None,
         }
 
-    url_map: dict[str, str] = {}
-    for art in top:
-        key = _norm_title(art.title)
-        if key not in url_map:
-            url_map[key] = art.url
-
     ckey = _cache_key(region_key, top, model)
     cache = _load_cache()
     cached = cache.get(ckey)
@@ -260,10 +254,9 @@ def summarize_region(
 
     articles_out = data.get("articles", [])
     for art in articles_out:
-        t = art.get("title", "")
-        original_url = url_map.get(_norm_title(t))
-        if original_url:
-            art["url"] = original_url
+        idx = art.get("index")
+        if idx is not None and 1 <= idx <= len(top):
+            art["url"] = top[idx - 1].url
 
     result = {
         "region": region_key,

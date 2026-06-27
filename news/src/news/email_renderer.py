@@ -5,10 +5,14 @@ import sys
 from pathlib import Path
 
 
+_SPACER_ROW = '<tr><td style="height: 16px; line-height: 16px; font-size: 1px;" height="16">&nbsp;</td></tr>'
+
+
 def _convert_to_html(md_text: str) -> str:
     lines = md_text.split("\n")
     parts: list[str] = []
     in_article = False
+    needs_spacer = False
 
     for line in lines:
         stripline = line.strip()
@@ -19,6 +23,9 @@ def _convert_to_html(md_text: str) -> str:
 
         # Region heading: # 🌎 North America
         if stripline.startswith("# "):
+            if needs_spacer:
+                parts.append(_SPACER_ROW)
+            needs_spacer = True
             parts.append(f'<tr><td class="region-header">{stripline[2:]}</td></tr>')
             continue
 
@@ -27,6 +34,9 @@ def _convert_to_html(md_text: str) -> str:
         if m:
             if in_article:
                 parts.append("</table></td></tr>")
+            if needs_spacer:
+                parts.append(_SPACER_ROW)
+            needs_spacer = True
             title, url_or_source = m.group(1), m.group(2)
             if url_or_source.startswith("http"):
                 title_html = f'<a href="{url_or_source}">{title}</a>'

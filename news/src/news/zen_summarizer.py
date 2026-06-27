@@ -46,8 +46,8 @@ SYSTEM_PROMPT = """You are a Korean news summarization assistant. Given a list o
 LANGUAGE RULE: You MUST write everything in Korean. If the article text is in Japanese, Chinese, Portuguese, Spanish, Arabic, or any other language — ignore the article language and write your output in Korean. ALL three fields — title, one_liner, and significance — must ALWAYS be in Korean. Writing any field in Japanese, Chinese, Portuguese, Spanish, or any language other than Korean is strictly forbidden.
 
 Respond in valid JSON:
-{"articles": [{"title": "...", "url": "...", "one_liner": "...", "significance": "..."}]}
-Every field must be non-empty. The title must be translated to Korean."""
+{"articles": [{"index": N, "title": "...", "url": "...", "one_liner": "...", "significance": "..."}]}
+"index" is the article number [N] from the provided list (1-based). Every field must be non-empty. The title must be translated to Korean."""
 
 
 def _strip_html(text: str) -> str:
@@ -205,12 +205,6 @@ def summarize_region(
             "error": None,
         }
 
-    url_map: dict[str, str] = {}
-    for art in top:
-        key = _norm_title(art.title)
-        if key not in url_map:
-            url_map[key] = art.url
-
     ckey = _cache_key(region_key, top, model)
     cache = _load_cache()
     cached = cache.get(ckey)
@@ -306,10 +300,9 @@ def summarize_region(
 
     articles_out = parsed.get("articles", [])
     for art in articles_out:
-        t = art.get("title", "")
-        original_url = url_map.get(_norm_title(t))
-        if original_url:
-            art["url"] = original_url
+        idx = art.get("index")
+        if idx is not None and 1 <= idx <= len(top):
+            art["url"] = top[idx - 1].url
 
     result = {
         "region": region_key,
