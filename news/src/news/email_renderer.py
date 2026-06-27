@@ -118,17 +118,20 @@ _HTML_TEMPLATE = """\
     border-radius: 0 0 12px 12px;
   }}
   .region-header {{
-    padding: 20px 0 8px;
+    padding: 28px 0 8px;
     font-size: 20px;
     font-weight: 700;
     color: #1a1a2e;
     border-bottom: 2px solid #e2e8f0;
   }}
+  .region-header:first-of-type {{
+    padding-top: 8px;
+  }}
   .article-card {{
     padding: 0;
   }}
   .article-table {{
-    margin: 12px 0 0;
+    margin: 12px 0 12px;
     padding: 16px;
     background: #f8fafc;
     border-radius: 8px;
