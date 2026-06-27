@@ -55,21 +55,20 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
 
-      - name: Read output
-        id: read_output
+      - name: Render HTML email
+        id: render_html
         run: |
-          {
-            echo 'digest<<EOF'
-            cat news_digest.md
-            echo EOF
-          } >> $GITHUB_OUTPUT
+          python src/news/email_renderer.py \
+            news_digest.md \
+            news_digest.html \
+            "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-      - name: Read run log (stderr)
-        id: read_log
+      - name: Read HTML body
+        id: read_html
         run: |
           {
-            echo 'log<<EOF'
-            cat run_log.txt
+            echo 'html_body<<EOF'
+            cat news_digest.html
             echo EOF
           } >> $GITHUB_OUTPUT
 
@@ -87,23 +86,13 @@ jobs:
             (${{ steps.run_script.outputs.exit_code == '0' && 'OK' || 'FAILED' }})
           to: ${{ secrets.EMAIL_TO }}
           from: GitHub Actions
-          convert_markdown: true
-          body: |
-            ${{ steps.read_output.outputs.digest }}
+          html_body: ${{ steps.read_html.outputs.html_body }}
 
-            ---
-
-            **실행 로그:**
-            ```
-            ${{ steps.read_log.outputs.log }}
-            ```
-
-            **Actions 실행 URL:**
-            https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-      - name: Upload artifact (결과 파일 보관)
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: news-digest
-          path: ${{ env.WORKING_DIR }}/news_digest.md
+          path: |
+            ${{ env.WORKING_DIR }}/news_digest.md
+            ${{ env.WORKING_DIR }}/news_digest.html
