@@ -66,16 +66,7 @@ jobs:
       - name: Read HTML body
         id: read_html
         run: |
-          python3 << 'PYEOF'
-import os
-html = open("news_digest.html", encoding="utf-8").read()
-with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
-    f.write("html_body<<GITHUB_EOF_MARKER\n")
-    f.write(html)
-    if not html.endswith("\n"):
-        f.write("\n")
-    f.write("GITHUB_EOF_MARKER\n")
-PYEOF
+          python3 -c "import os; html = open('news_digest.html', encoding='utf-8').read(); open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8').write('html_body<<GITHUB_EOF_MARKER\n' + html + '\nGITHUB_EOF_MARKER\n')"
 
       - name: Send email
         uses: dawidd6/action-send-mail@v3
