@@ -39,12 +39,16 @@ jobs:
       - name: Run news digest
         id: run_script
         run: |
+          set +e
           python main.py \
             --provider gemini \
             --limit 15 \
             --output markdown \
             > news_digest.md 2> run_log.txt
-          echo "exit_code=$?" >> $GITHUB_OUTPUT
+          exit_code=$?
+          echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
+          echo "=== stderr (run_log.txt) ==="
+          cat run_log.txt
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           # 대체 Provider를 쓰려면 주석 해제:
