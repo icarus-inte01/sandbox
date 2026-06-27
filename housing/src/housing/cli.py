@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from datetime import datetime
 from typing import Any
@@ -90,6 +91,7 @@ def cmd_report(args: argparse.Namespace, listings: list[SaleListing]) -> None:
     html = render_report(listings, datetime.now().strftime("%Y-%m-%d"))
 
     output_path = args.output
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(html)
 
@@ -126,6 +128,7 @@ def cmd_all(args: argparse.Namespace) -> None:
     html = render_report(top, report_date)
 
     output_path = args.output or "output/report.html"
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(html)
 
