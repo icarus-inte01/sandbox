@@ -1,0 +1,79 @@
+name: 🏠 분양정보 유망도 리포트
+
+on:
+  schedule:
+    # 매주 월요일 09:00 KST = UTC 00:00 Mon
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+    # GitHub UI에서 수동 실행 가능
+
+env:
+  PYTHON_VERSION: '3.14'
+  WORKING_DIR: housing
+
+jobs:
+  generate-and-send-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: ${{ env.WORKING_DIR }}/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Generate housing report
+        id: run_report
+        run: |
+          python main.py all 2>&1
+          echo "report_path=output/report.html" >> $GITHUB_OUTPUT
+          ls -la output/report.html
+        env:
+          DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
+
+      - name: Read HTML body
+        id: read_html
+        run: |
+          python3 -c "
+import os
+html = open('output/report.html', encoding='utf-8').read()
+with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
+    f.write('html_body<<GITHUB_EOF_MARKER\n' + html + '\nGITHUB_EOF_MARKER\n')
+"
+
+      - name: Send email
+        uses: dawidd6/action-send-mail@v3
+        if: always()
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USER }}
+          password: ${{ secrets.EMAIL_PASS }}
+          subject: >-
+            ${{ job.status == 'success' && '✅' || '⚠️' }}
+            분양정보 유망도 주간리포트
+            (${{ steps.run_report.outputs.report_path != '' && 'OK' || 'FAILED' }})
+          to: ${{ secrets.EMAIL_TO }}
+          from: GitHub Actions
+          html_body: ${{ steps.read_html.outputs.html_body }}
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: housing-report
+          path: ${{ env.WORKING_DIR }}/output/report.html

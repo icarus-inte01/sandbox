@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ title }}</title>
+<style type="text/css">
+/* 이메일 클라이언트 호환 인라인 CSS */
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #f4f4f5;
+  font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', 'Dotum', sans-serif;
+  font-size: 14px;
+  color: #333;
+}
+.container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 20px;
+}
+.header {
+  background: linear-gradient(135deg, #1a365d 0%, #2d5a8e 100%);
+  color: #ffffff;
+  padding: 28px 24px;
+  border-radius: 12px 12px 0 0;
+}
+.header h1 {
+  margin: 0 0 6px 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+.header .subtitle {
+  font-size: 13px;
+  opacity: 0.85;
+}
+.header .total-info {
+  margin-top: 12px;
+  font-size: 13px;
+  opacity: 0.9;
+}
+.content {
+  background-color: #ffffff;
+  padding: 20px 16px;
+  border-radius: 0 0 12px 12px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin: 12px 0;
+}
+thead th {
+  background-color: #1a365d;
+  color: #ffffff;
+  padding: 10px 6px;
+  text-align: center;
+  font-weight: 600;
+  white-space: nowrap;
+}
+tbody td {
+  padding: 8px 6px;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: center;
+  vertical-align: middle;
+}
+tbody tr:hover {
+  background-color: #f8fafc;
+}
+tbody tr.high-score {
+  background-color: #f0fdf4;
+}
+tbody tr.mid-score {
+  background-color: #fefce8;
+}
+.rank-badge {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  line-height: 24px;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 12px;
+  color: #fff;
+  text-align: center;
+}
+.rank-1 { background-color: #dc2626; }
+.rank-2 { background-color: #ea580c; }
+.rank-3 { background-color: #d97706; }
+.rank-other { background-color: #6b7280; }
+.score-cell {
+  font-weight: 700;
+  font-size: 15px;
+}
+.text-left { text-align: left; }
+.text-right { text-align: right; }
+.footer {
+  margin-top: 20px;
+  padding: 16px;
+  background-color: #f9fafb;
+  border-radius: 8px;
+  font-size: 11px;
+  color: #6b7280;
+  line-height: 1.6;
+}
+.footer h3 {
+  font-size: 12px;
+  color: #374151;
+  margin: 0 0 8px 0;
+}
+.footer p { margin: 4px 0; }
+.legend {
+  margin: 8px 0;
+  font-size: 11px;
+  color: #6b7280;
+}
+.legend span {
+  display: inline-block;
+  margin-right: 12px;
+}
+.legend .dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+@media (max-width: 600px) {
+  table { font-size: 11px; }
+  .container { padding: 10px; }
+  .header { padding: 20px 16px; }
+  .header h1 { font-size: 18px; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HEADER -->
+  <div class="header">
+    <h1>{{ title }}</h1>
+    <div class="subtitle">보고서 기준일: {{ report_date }} | 총 {{ total_count }}개 단지</div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <!-- LEGEND -->
+    <div class="legend">
+      <span><span class="dot" style="background:#1a7a3a;"></span>80점 이상 (우수)</span>
+      <span><span class="dot" style="background:#2d8f4e;"></span>70-79점 (양호)</span>
+      <span><span class="dot" style="background:#e6a817;"></span>60-69점 (보통)</span>
+      <span><span class="dot" style="background:#b91c1c;"></span>60점 미만 (저조)</span>
+    </div>
+
+    {% if listings %}
+    <table>
+      <thead>
+        <tr>
+          <th style="width:32px;">순위</th>
+          <th style="width:44px;">유형</th>
+          <th class="text-left">단지명</th>
+          <th class="text-left">위치</th>
+          <th style="width:50px;">세대수</th>
+          <th style="width:80px;">분양가</th>
+          <th style="width:44px;">할인율</th>
+          <th style="width:48px;">총점</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in listings %}
+        <tr class="{% if item.total_score and item.total_score >= 80 %}high-score{% elif item.total_score and item.total_score >= 60 %}mid-score{% endif %}">
+          <td>
+            <span class="rank-badge {% if loop.index == 1 %}rank-1{% elif loop.index == 2 %}rank-2{% elif loop.index == 3 %}rank-3{% else %}rank-other{% endif %}">
+              {{ loop.index }}
+            </span>
+          </td>
+          <td>{{ item.supply_type_kr }}</td>
+          <td class="text-left">
+            <strong>{{ item.name }}</strong>
+            {% if item.builder and item.builder != '-' %}
+            <br><span style="font-size:10px;color:#6b7280;">{{ item.builder }}</span>
+            {% endif %}
+          </td>
+          <td class="text-left" style="font-size:11px;">{{ item.region }}</td>
+          <td>{{ item.units }}</td>
+          <td class="text-right">{{ item.price_str }}</td>
+          <td>
+            {% if item.discount_rate is not none %}
+              {{ "%.1f"|format(item.discount_rate) }}%
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          <td class="score-cell" style="color:{{ item.score_color }};">
+            {% if item.total_score is not none %}
+              {{ "%.0f"|format(item.total_score) }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="text-align:center;padding:40px 0;color:#9ca3af;font-size:15px;">
+      현재 분양정보가 없습니다.
+    </p>
+    {% endif %}
+
+    <!-- FOOTER NOTES -->
+    {% if include_notes %}
+    <div class="footer">
+      <h3>📋 참고사항</h3>
+      <p>• 본 보고서는 공공데이터포털 OpenAPI 기반으로 작성되었습니다.</p>
+      <p>• 유망도 점수는 분양가할인율(35%), 교통/입지(30%), 시공사브랜드(15%), 청약경쟁률(15%), 공급규모(5%)를 종합하여 산출합니다.</p>
+      <p>• 데이터 출처: 청약홈, LH, SH, 국토교통부 실거래가</p>
+      <p>• 본 정보는 참고용이며, 투자 결정은 본인의 판단에 따라 신중히 이루어져야 합니다.</p>
+      <p>• 특정 상품에 대한 매수 추천이 아님을 밝힙니다.</p>
+    </div>
+    {% endif %}
+
+  </div>
+
+</div>
+</body>
+</html>

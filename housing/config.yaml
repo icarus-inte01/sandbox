@@ -1,0 +1,30 @@
+# 공공데이터포털 API 인증키 (GitHub Secrets에서 주입)
+api_keys:
+  data_go_kr: "${DATA_GO_KR_API_KEY}"
+
+# 유망도 점수 가중치 (합계 = 1.0)
+weights:
+  discount_rate: 0.35   # 분양가 할인율 (분양가 vs 시세)
+  transit_location: 0.30  # 교통/입지
+  brand: 0.15           # 시공사 브랜드
+  competition: 0.15     # 청약경쟁률
+  scale: 0.05           # 공급규모 (세대수)
+
+# API 호출 설정
+api:
+  request_delay: 0.5     # 요청 간 지연(초)
+  max_retries: 3
+  timeout: 30            # 타임아웃(초)
+  per_page: 100          # 페이지당 건수
+
+# 캐시 설정
+cache:
+  enabled: true
+  ttl_hours: 6           # 캐시 유효시간
+  dir: ".cache"
+
+# 브랜드 점수 오버라이드 (개별 조정 필요시)
+brand_score_overrides: {}
+
+# 지역 점수 오버라이드
+region_score_overrides: {}
