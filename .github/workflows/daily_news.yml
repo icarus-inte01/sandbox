@@ -41,7 +41,8 @@ jobs:
         run: |
           set +e
           python main.py \
-            --provider gemini \
+            --provider zen \
+            --model big-pickle \
             --limit 15 \
             --output markdown \
             > news_digest.md 2> run_log.txt
@@ -50,10 +51,9 @@ jobs:
           echo "=== stderr (run_log.txt) ==="
           cat run_log.txt
         env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          # 대체 Provider를 쓰려면 주석 해제:
-          # GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          # OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
 
       - name: Read output
         id: read_output
