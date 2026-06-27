@@ -41,7 +41,7 @@ def _convert_to_html(md_text: str) -> str:
             continue
 
         # Sub-bullet:    - **label**: text
-        m = re.match(r"\s+-\s+\*\*(.+?)\*\*:\s*(.*)", stripline)
+        m = re.match(r"\s*-\s+\*\*(.+?)\*\*:\s*(.*)", stripline)
         if m:
             label, text = m.group(1), m.group(2)
             css_class = "article-summary" if "요약" in label else "article-significance"
