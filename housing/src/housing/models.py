@@ -36,6 +36,7 @@ class SaleListing:
     status: SaleStatus = SaleStatus.PLANNED     # 분양상태
     units: int = 0                        # 공급세대수
     price: int = 0                        # 분양금액 (만원 단위)
+    market_price: int = 0                 # 인근 실거래가 참고가 (만원 단위)
     builder: str = ""                     # 시공사/건설사
     pyeong_type: str = ""                 # 주택형/전용면적 정보
     competition_rate: float = 0.0         # 청약경쟁률
@@ -44,6 +45,7 @@ class SaleListing:
     region_code: str = ""                 # 공급지역코드
     source: str = ""                      # 데이터 출처 (cheongyak/lh/molit/naver)
     raw_data: dict = field(default_factory=dict)  # 원본 데이터
+    units_info: list[dict] = field(default_factory=list)  # 주택형별 상세 [(model_no, house_type, supply_area, price, households), ...]
 
     # 분석 결과 필드 (analyzer에서 채움)
     discount_rate: Optional[float] = None  # 분양가 할인율 (%)

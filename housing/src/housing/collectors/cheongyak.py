@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Optional
 
 from src.housing.collectors.base import BaseCollector
@@ -15,12 +15,10 @@ from src.housing.models import SaleListing, SupplyType, SaleStatus
 logger = logging.getLogger(__name__)
 
 
-# 청약홈 API 엔드포인트 (odcloud 게이트웨이 — 신청 후 서비스키만 있으면 사용 가능)
-# https://www.data.go.kr/data/15098547/openapi.do
 API_BASE = "https://api.odcloud.kr/api/ApplyhomeInfoDetailSvc/v1"
 API_LIST = f"{API_BASE}/getAPTLttotPblancDetail"
+API_MDL = f"{API_BASE}/getAPTLttotPblancMdl"
 
-# 법정동코드 → 지역명 매핑 (전체 시/도 + 주요 시/군/구)
 REGION_CODE_MAP: dict[str, str] = {
     "11": "서울특별시",
     "26": "부산광역시",
@@ -42,11 +40,18 @@ REGION_CODE_MAP: dict[str, str] = {
 }
 
 
-class CheongyakCollector(BaseCollector):
-    """청약홈 분양정보 수집기.
+def _sum_households(model: dict[str, Any]) -> int:
+    return (
+        int(model.get("SUPLY_HSHLDCO", 0) or 0)
+        + int(model.get("SPSPLY_HSHLDCO", 0) or 0)
+        + int(model.get("ETC_HSHLDCO", 0) or 0)
+        + int(model.get("NWWDS_HSHLDCO", 0) or 0)
+        + int(model.get("NWBB_HSHLDCO", 0) or 0)
+    )
 
-    공공데이터포털 청약홈 OpenAPI를 통해 전국 아파트 분양공고를 수집합니다.
-    """
+
+class CheongyakCollector(BaseCollector):
+    """청약홈 분양정보 수집기."""
 
     def __init__(self, config: Optional[Any] = None):
         super().__init__(config)
@@ -58,34 +63,68 @@ class CheongyakCollector(BaseCollector):
         from_date: Optional[str] = None,
         mock: bool = False,
     ) -> list[SaleListing]:
-        """청약홈 분양정보를 수집합니다.
-
-        Args:
-            region: 공급지역코드 (None=전국)
-            from_date: 기준일 (YYYY-MM-DD, None=최근 30일)
-            mock: Mock 모드 (실제 API 호출 없이 테스트 데이터)
-
-        Returns:
-            SaleListing 리스트
-        """
+        """청약홈 분양정보를 수집합니다."""
         if mock:
             return self._mock_collect(region)
 
-        # 실제 API 호출 (odcloud 게이트웨이)
         if not self.client._service_key or self.client._service_key.startswith("${"):
             logger.warning("DATA_GO_KR_API_KEY not configured. Falling back to mock data.")
             return self._mock_collect(region)
 
         try:
-            params = {
-                "page": 1,
-                "perPage": 100,
-            }
-            # odcloud 필터: cond[RCRIT_PBLANC_DE::GTE]=YYYY-MM-DD
+            params = {"page": 1, "perPage": 100}
             if region:
                 params["cond[SUBSCRPT_AREA_CODE_NM::EQ]"] = region
-            response = self.client.fetch_all(API_LIST, params, max_pages=5)
-            return [self._to_listing(item) for item in response]
+
+            detail_items = self.client.fetch_all(API_LIST, params, max_pages=5)
+
+            model_params = {k: v for k, v in params.items() if not k.startswith("cond[")}
+            try:
+                # model endpoint는 detail보다 totalCount가 ~5배 많음 (주택형별 row)
+                # 30페이지(3,000개)면 detail 5페이지(500개)의 99.8% 커버
+                model_items = self.client.fetch_all(API_MDL, model_params, max_pages=30)
+            except Exception:
+                logger.warning("Model endpoint failed, proceeding without price data.")
+                model_items = []
+
+            models_by_house: dict[str, list[dict]] = {}
+            for m in model_items:
+                key = m.get("HOUSE_MANAGE_NO", "")
+                if key:
+                    models_by_house.setdefault(key, []).append(m)
+
+            result: list[SaleListing] = []
+            for item in detail_items:
+                listing = self._to_listing(item)
+                key = item.get("HOUSE_MANAGE_NO", "")
+                models = models_by_house.get(key, [])
+                if models:
+                    listing.units_info = [
+                        {
+                            "model_no": m.get("MODEL_NO", ""),
+                            "house_type": m.get("HOUSE_TY", ""),
+                            "supply_area": m.get("SUPLY_AR", ""),
+                            "price": int(m.get("LTTOT_TOP_AMOUNT", 0) or 0),
+                            "households": _sum_households(m),
+                        }
+                        for m in models
+                    ]
+                    # 평당분양가 계산 (price는 만원, supply_area는 m²)
+                    for u in listing.units_info:
+                        area = u.get("supply_area")
+                        if area:
+                            try:
+                                a = float(area)
+                                if a > 0:
+                                    u["price_per_m2"] = round(u["price"] / a, 0)
+                                    u["price_per_pyung"] = round(u["price"] / a * 3.3058, 0)
+                            except (ValueError, TypeError):
+                                pass
+                    prices = [u["price"] for u in listing.units_info if u["price"] > 0]
+                    if prices:
+                        listing.price = min(prices)
+                result.append(listing)
+            return result
         except Exception as e:
             logger.error("Cheongyak API call failed: %s", e)
             return self._mock_collect(region)
@@ -103,6 +142,11 @@ class CheongyakCollector(BaseCollector):
                 "builder": "삼성물산",
                 "region_code": "11",
                 "pblanc_knd": "아파트",
+                "units_info": [
+                    {"model_no": "1", "house_type": "전용 59", "supply_area": "59.0", "price": 78000, "households": 512},
+                    {"model_no": "2", "house_type": "전용 84", "supply_area": "84.0", "price": 95000, "households": 384},
+                    {"model_no": "3", "house_type": "전용 112", "supply_area": "112.0", "price": 118000, "households": 128},
+                ],
             },
             {
                 "pblanc_no": "2026001002",
@@ -114,6 +158,10 @@ class CheongyakCollector(BaseCollector):
                 "builder": "현대건설",
                 "region_code": "11",
                 "pblanc_knd": "아파트",
+                "units_info": [
+                    {"model_no": "1", "house_type": "전용 59", "supply_area": "59.0", "price": 82000, "households": 160},
+                    {"model_no": "2", "house_type": "전용 84", "supply_area": "84.0", "price": 105000, "households": 160},
+                ],
             },
             {
                 "pblanc_no": "2026001003",
@@ -125,6 +173,10 @@ class CheongyakCollector(BaseCollector):
                 "builder": "GS건설",
                 "region_code": "41",
                 "pblanc_knd": "아파트",
+                "units_info": [
+                    {"model_no": "1", "house_type": "전용 59", "supply_area": "59.0", "price": 65000, "households": 340},
+                    {"model_no": "2", "house_type": "전용 84", "supply_area": "84.0", "price": 78000, "households": 340},
+                ],
             },
             {
                 "pblanc_no": "2026001004",
@@ -136,6 +188,11 @@ class CheongyakCollector(BaseCollector):
                 "builder": "대림산업",
                 "region_code": "41",
                 "pblanc_knd": "아파트",
+                "units_info": [
+                    {"model_no": "1", "house_type": "전용 59", "supply_area": "59.0", "price": 38000, "households": 475},
+                    {"model_no": "2", "house_type": "전용 84", "supply_area": "84.0", "price": 45000, "households": 380},
+                    {"model_no": "3", "house_type": "전용 112", "supply_area": "112.0", "price": 55000, "households": 95},
+                ],
             },
             {
                 "pblanc_no": "2026001005",
@@ -147,6 +204,10 @@ class CheongyakCollector(BaseCollector):
                 "builder": "한화건설",
                 "region_code": "44",
                 "pblanc_knd": "아파트",
+                "units_info": [
+                    {"model_no": "1", "house_type": "전용 59", "supply_area": "59.0", "price": 28000, "households": 270},
+                    {"model_no": "2", "house_type": "전용 84", "supply_area": "84.0", "price": 35000, "households": 180},
+                ],
             },
         ]
 
@@ -157,7 +218,19 @@ class CheongyakCollector(BaseCollector):
                 if item.get("region_code", "").startswith(region_prefix)
             ]
 
-        return [self._to_listing(item) for item in mock_data]
+        result = [self._to_listing(item) for item in mock_data]
+        for listing in result:
+            for u in listing.units_info:
+                area = u.get("supply_area")
+                if area:
+                    try:
+                        a = float(area)
+                        if a > 0:
+                            u["price_per_m2"] = round(u["price"] / a, 0)
+                            u["price_per_pyung"] = round(u["price"] / a * 3.3058, 0)
+                    except (ValueError, TypeError):
+                        pass
+        return result
 
     def _to_listing(self, item: dict[str, Any]) -> SaleListing:
         """API 응답 아이템을 SaleListing으로 변환합니다."""
@@ -183,6 +256,8 @@ class CheongyakCollector(BaseCollector):
         if location and not region_name:
             region_name = location.split()[0] if location else ""
 
+        units_info = item.get("units_info") or []
+
         return SaleListing(
             name=name,
             region=location or region_name,
@@ -194,6 +269,7 @@ class CheongyakCollector(BaseCollector):
             region_code=region_code,
             announcement_date=announcement_date,
             source="cheongyak",
+            units_info=units_info,
         )
 
     def _estimate_status(self, announcement_date: str, name: str) -> SaleStatus:
@@ -219,7 +295,6 @@ class CheongyakCollector(BaseCollector):
         elif days_diff < 365:
             return SaleStatus.CLOSED
         else:
-            # 미분양: 1년 이상 지난 공고 + 특정 키워드
             unsold_keywords = ["미분양", "잔여", "무순위", "취소후"]
             if any(kw in name for kw in unsold_keywords):
                 return SaleStatus.UNSOLD

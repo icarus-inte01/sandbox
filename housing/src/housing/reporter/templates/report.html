@@ -53,13 +53,14 @@ table {
 thead th {
   background-color: #1a365d;
   color: #ffffff;
-  padding: 10px 6px;
+  padding: 10px 4px;
   text-align: center;
   font-weight: 600;
   white-space: nowrap;
+  font-size: 11px;
 }
 tbody td {
-  padding: 8px 6px;
+  padding: 8px 4px;
   border-bottom: 1px solid #e5e7eb;
   text-align: center;
   vertical-align: middle;
@@ -72,6 +73,22 @@ tbody tr.high-score {
 }
 tbody tr.mid-score {
   background-color: #fefce8;
+}
+/* score breakdown sub-row */
+tr.breakdown-row td {
+  padding: 2px 4px 8px 4px;
+  border-bottom: 1px solid #d1d5db;
+  font-size: 10px;
+}
+.dim-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  margin: 0 2px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
 }
 .rank-badge {
   display: inline-block;
@@ -158,14 +175,16 @@ tbody tr.mid-score {
     <table>
       <thead>
         <tr>
-          <th style="width:32px;">순위</th>
-          <th style="width:44px;">유형</th>
+          <th style="width:28px;">순위</th>
+          <th style="width:38px;">유형</th>
           <th class="text-left">단지명</th>
           <th class="text-left">위치</th>
-          <th style="width:50px;">세대수</th>
-          <th style="width:80px;">분양가</th>
-          <th style="width:44px;">할인율</th>
-          <th style="width:48px;">총점</th>
+          <th style="width:44px;">세대수</th>
+          <th style="width:64px;">분양가</th>
+          <th style="width:54px;">평당가</th>
+          <th style="width:64px;">참고가</th>
+          <th style="width:40px;">할인율</th>
+          <th style="width:44px;">총점</th>
         </tr>
       </thead>
       <tbody>
@@ -185,7 +204,9 @@ tbody tr.mid-score {
           </td>
           <td class="text-left" style="font-size:11px;">{{ item.region }}</td>
           <td>{{ item.units }}</td>
-          <td class="text-right">{{ item.price_str }}</td>
+          <td style="font-size:11px;">{{ item.price_str }}</td>
+          <td style="font-size:11px;">{% if item.avg_price_per_pyung and item.avg_price_per_pyung > 0 %}{{ "{:,.0f}".format(item.avg_price_per_pyung) }}만원{% else %}-{% endif %}</td>
+          <td style="font-size:11px;">{{ item.market_price_str }}</td>
           <td>
             {% if item.discount_rate is not none %}
               {{ "%.1f"|format(item.discount_rate) }}%
@@ -201,6 +222,35 @@ tbody tr.mid-score {
             {% endif %}
           </td>
         </tr>
+        {% if item.units_info_display %}
+        <tr class="breakdown-row">
+          <td colspan="10" class="text-left">
+            <span style="color:#6b7280;font-size:10px;">주택형:</span>
+            {% for unit in item.units_info_display %}
+            <span class="dim-badge" style="background:#374151;">{{ unit }}</span>
+            {% endfor %}
+          </td>
+        </tr>
+        {% endif %}
+        {% if item.has_breakdown %}
+        <tr class="breakdown-row">
+          <td colspan="10" class="text-left">
+            <span style="color:#6b7280;font-size:10px;">세부점수:</span>
+            {% if item.transit_score is not none %}
+            <span class="dim-badge" style="background:#2563eb;">교통/입지 {{ "%.0f"|format(item.transit_score) }}</span>
+            {% endif %}
+            {% if item.brand_score is not none %}
+            <span class="dim-badge" style="background:#7c3aed;">브랜드 {{ "%.0f"|format(item.brand_score) }}</span>
+            {% endif %}
+            {% if item.competition_score is not none %}
+            <span class="dim-badge" style="background:#0891b2;">경쟁률 {{ "%.0f"|format(item.competition_score) }}</span>
+            {% endif %}
+            {% if item.scale_score is not none %}
+            <span class="dim-badge" style="background:#059669;">규모 {{ "%.0f"|format(item.scale_score) }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endif %}
         {% endfor %}
       </tbody>
     </table>

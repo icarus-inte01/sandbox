@@ -106,6 +106,26 @@ def render_report(
     # 점수별 색상 클래스
     scored_listings = []
     for listing in listings:
+        has_price = listing.price > 0
+        units_display = []
+        avg_price_per_pyung = 0
+        avg_weight = 0
+        if listing.units_info:
+            for u in listing.units_info:
+                price_str = _krw_format(u.get("price", 0)) if u.get("price", 0) > 0 else "정보없음"
+                area = u.get("supply_area", "")
+                hh = u.get("households", 0)
+                ppy = u.get("price_per_pyung", 0)
+                label = f"{area}m² {price_str}"
+                if ppy and ppy > 0:
+                    label += f" (평당 {int(ppy):,}만원)"
+                if hh:
+                    label += f" / {hh}세대"
+                units_display.append(label)
+                # 가중평균 평당분양가
+                if ppy and ppy > 0 and hh > 0:
+                    avg_price_per_pyung += ppy * hh
+                    avg_weight += hh
         d = {
             "name": listing.name,
             "region": listing.region,
@@ -115,13 +135,27 @@ def render_report(
             "status_kr": _status_kr(listing.status),
             "units": listing.units,
             "price": listing.price,
-            "price_str": _krw_format(listing.price),
+            "price_str": _krw_format(listing.price) if has_price else "정보없음",
             "builder": listing.builder or "-",
             "discount_rate": listing.discount_rate,
+            "market_price": listing.market_price,
+            "market_price_str": _krw_format(listing.market_price) if listing.market_price > 0 else "-",
             "total_score": listing.total_score,
             "score_color": _score_color(listing.total_score),
             "source": listing.source,
             "competition_rate": listing.competition_rate if listing.competition_rate else None,
+            "transit_score": listing.transit_score,
+            "brand_score": listing.brand_score,
+            "competition_score": listing.competition_score,
+            "scale_score": listing.scale_score,
+            "avg_price_per_pyung": round(avg_price_per_pyung / avg_weight) if avg_weight > 0 else 0,
+            "units_info_display": units_display,
+            "has_breakdown": any([
+                listing.transit_score is not None,
+                listing.brand_score is not None,
+                listing.competition_score is not None,
+                listing.scale_score is not None,
+            ]),
         }
         scored_listings.append(d)
 

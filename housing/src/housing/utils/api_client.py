@@ -39,6 +39,7 @@ class OdcloudClient:
         self._session.headers.update({
             "User-Agent": "Mozilla/5.0 (compatible; HousingBot/1.0)",
             "Accept": "application/json, text/plain, */*",
+            "Referer": "https://www.data.go.kr/",
         })
 
     def _wait_rate_limit(self) -> None:

@@ -15,8 +15,8 @@ from src.housing.models import SaleListing, SupplyType, SaleStatus, TradeRecord
 logger = logging.getLogger(__name__)
 
 
-# 국토부 실거래가 API
-MOLIT_API_URL = "http://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev"
+# 국토부 실거래가 API (15126469 — RTMSDataSvcAptTrade, Dev 없음)
+MOLIT_API_URL = "http://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade"
 
 
 class MolitTradeCollector(BaseCollector):
@@ -68,8 +68,8 @@ class MolitTradeCollector(BaseCollector):
         }
 
         try:
-            xml_text = self.client.fetch_text(MOLIT_API_URL, params)
-            return self._parse_trades_xml(xml_text, lawd_cd, year_month)
+            data = self.client.fetch(MOLIT_API_URL, params)
+            return self._parse_trades_json(data, lawd_cd, year_month)
         except Exception as e:
             logger.error("Failed to fetch trades for %s/%s: %s", lawd_cd, year_month, e)
             return []
@@ -117,38 +117,36 @@ class MolitTradeCollector(BaseCollector):
 
         return self._aggregate_trades(all_trades, region_code)
 
-    def _parse_trades_xml(
-        self, xml_text: str, lawd_cd: str, year_month: str
+    def _parse_trades_json(
+        self, raw: dict[str, Any], lawd_cd: str, year_month: str
     ) -> list[TradeRecord]:
-        """XML 응답에서 TradeRecord 리스트를 추출합니다."""
-        import xml.etree.ElementTree as ET
+        """JSON 응답에서 TradeRecord 리스트를 추출합니다.
 
+        응답 구조: response > body > items > item (list)
+        """
         trades: list[TradeRecord] = []
-        try:
-            root = ET.fromstring(xml_text)
-        except ET.ParseError as e:
-            logger.error("XML parse error: %s", e)
-            return trades
+        body = raw.get("response", {}).get("body", {})
+        items_container = body.get("items", {})
+        if not isinstance(items_container, dict):
+            items = []
+        else:
+            items = items_container.get("item", [])
+            if not isinstance(items, list):
+                items = [items] if items else []
 
-        # 국토부 XML 구조: response > body > items > item
-        body = root.find(".//body")
-        if body is None:
-            return trades
-        items = body.find("items")
-        if items is None:
-            return trades
-
-        for item in items.findall("item"):
+        for item in items:
+            if not isinstance(item, dict):
+                continue
             try:
                 trade = TradeRecord(
-                    apartment_name=self._xml_text(item, "aptNm"),
-                    price=self._parse_price(self._xml_text(item, "dealAmount")),
-                    area=float(self._xml_text(item, "excluUseAr") or 0),
-                    contract_date=f"{year_month}{self._xml_text(item, 'dealDay', '01')}",
-                    floor=int(self._xml_text(item, "floor") or 0),
-                    build_year=int(self._xml_text(item, "buildYear") or 0),
+                    apartment_name=str(item.get("aptNm", "") or ""),
+                    price=self._parse_price(str(item.get("dealAmount", "") or "")),
+                    area=float(item.get("excluUseAr") or 0),
+                    contract_date=f"{year_month}{str(item.get('dealDay', '01') or '01'):0>2}",
+                    floor=int(item.get("floor") or 0),
+                    build_year=int(item.get("buildYear") or 0),
                     region_code=lawd_cd,
-                    region_name=self._xml_text(item, "umdNm", ""),
+                    region_name=str(item.get("umdNm", "") or ""),
                 )
                 if trade.price > 0 and trade.area > 0:
                     trades.append(trade)
@@ -205,13 +203,6 @@ class MolitTradeCollector(BaseCollector):
             "region_code": region_code,
         }
 
-    def _xml_text(self, parent, tag: str, default: str = "") -> str:
-        """XML 요소의 텍스트 값을 안전하게 추출합니다."""
-        elem = parent.find(tag)
-        if elem is not None and elem.text:
-            return elem.text.strip()
-        return default
-
     def _mock_trades(self, lawd_cd: str, year_month: str) -> list[TradeRecord]:
         """Mock 실거래가 데이터"""
         # 지역코드에 따른 Mock 데이터
@@ -233,14 +224,14 @@ class MolitTradeCollector(BaseCollector):
         }
 
         trades: list[TradeRecord] = []
-        for apt_data in mock_by_region.get(lawd_cd, mock_by_region.get("11110", [])):
+        for raw_item in mock_by_region.get(lawd_cd, mock_by_region.get("11110", [])):
             trades.append(TradeRecord(
-                apartment_name=apt_data["apt"],
-                price=apt_data["price"],
-                area=apt_data["area"],
+                apartment_name=str(raw_item["apt"]),
+                price=int(raw_item["price"]),
+                area=float(raw_item["area"]),
                 contract_date=f"{year_month}15",
-                floor=apt_data["floor"],
-                build_year=apt_data["year"],
+                floor=int(raw_item["floor"]),
+                build_year=int(raw_item["year"]),
                 region_code=lawd_cd,
                 region_name="",
             ))
