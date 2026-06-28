@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ title }}</title>
 <style type="text/css">
-/* 이메일 클라이언트 호환 인라인 CSS */
 body {
   margin: 0;
   padding: 0;
@@ -76,9 +75,39 @@ tbody tr.mid-score {
 }
 /* score breakdown sub-row */
 tr.breakdown-row td {
-  padding: 2px 4px 8px 4px;
+  padding: 6px 8px;
   border-bottom: 1px solid #d1d5db;
+  background-color: #fafafa;
+}
+tr.sub-table-row td {
+  padding: 0;
+  border-bottom: 1px solid #d1d5db;
+}
+/* sub-table for units */
+table.units-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  margin: 0;
+}
+table.units-table thead th {
+  background-color: #374151;
+  color: #fff;
+  padding: 5px 6px;
   font-size: 10px;
+  font-weight: 600;
+  text-align: center;
+  border-bottom: 1px solid #4b5563;
+}
+table.units-table tbody td {
+  padding: 4px 6px;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: center;
+  font-size: 11px;
+  vertical-align: middle;
+}
+table.units-table tbody tr:last-child td {
+  border-bottom: none;
 }
 .dim-badge {
   display: inline-block;
@@ -180,9 +209,8 @@ tr.breakdown-row td {
           <th class="text-left">단지명</th>
           <th class="text-left">위치</th>
           <th style="width:44px;">세대수</th>
-          <th style="width:64px;">분양가</th>
-          <th style="width:54px;">평당가</th>
-          <th style="width:64px;">참고가</th>
+          <th style="width:58px;">평당분양가</th>
+          <th style="width:62px;">평당참고가</th>
           <th style="width:40px;">할인율</th>
           <th style="width:44px;">총점</th>
         </tr>
@@ -204,7 +232,6 @@ tr.breakdown-row td {
           </td>
           <td class="text-left" style="font-size:11px;">{{ item.region }}</td>
           <td>{{ item.units }}</td>
-          <td style="font-size:11px;">{{ item.price_str }}</td>
           <td style="font-size:11px;">{% if item.avg_price_per_pyung and item.avg_price_per_pyung > 0 %}{{ "{:,.0f}".format(item.avg_price_per_pyung) }}만원{% else %}-{% endif %}</td>
           <td style="font-size:11px;">{{ item.market_price_str }}</td>
           <td>
@@ -222,19 +249,37 @@ tr.breakdown-row td {
             {% endif %}
           </td>
         </tr>
-        {% if item.units_info_display %}
-        <tr class="breakdown-row">
-          <td colspan="10" class="text-left">
-            <span style="color:#6b7280;font-size:10px;">주택형:</span>
-            {% for unit in item.units_info_display %}
-            <span class="dim-badge" style="background:#374151;">{{ unit }}</span>
-            {% endfor %}
+        {% if item.units_table %}
+        <tr class="sub-table-row">
+          <td colspan="9" style="padding:0;">
+            <table class="units-table">
+              <thead>
+                <tr>
+                  <th style="width:50px;">주택형</th>
+                  <th style="width:50px;">공급면적</th>
+                  <th>분양가</th>
+                  <th>평당분양가</th>
+                  <th>세대수</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for unit in item.units_table %}
+                <tr>
+                  <td>{% if unit.house_type %}{{ unit.house_type }}{% else %}일반{% endif %}</td>
+                  <td>{% if unit.supply_area %}{{ unit.supply_area }}m²{% else %}-{% endif %}</td>
+                  <td>{{ unit.price_str }}</td>
+                  <td>{% if unit.price_per_pyung > 0 %}{{ "{:,}".format(unit.price_per_pyung) }}만원{% else %}-{% endif %}</td>
+                  <td>{% if unit.households > 0 %}{{ unit.households }}세대{% else %}-{% endif %}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
           </td>
         </tr>
         {% endif %}
         {% if item.has_breakdown %}
         <tr class="breakdown-row">
-          <td colspan="10" class="text-left">
+          <td colspan="9" class="text-left">
             <span style="color:#6b7280;font-size:10px;">세부점수:</span>
             {% if item.transit_score is not none %}
             <span class="dim-badge" style="background:#2563eb;">교통/입지 {{ "%.0f"|format(item.transit_score) }}</span>

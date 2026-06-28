@@ -35,6 +35,29 @@ def calculate_discount_rate(
     return round(discount, 1)
 
 
+def calculate_discount_rate_per_area(
+    supply_price_per_m2: float,
+    market_price_per_m2: float,
+) -> Optional[float]:
+    """㎡당 단가 기준 할인율을 계산합니다.
+
+    할인율 = (주변평단가 - 평당분양가) / 주변평단가 * 100
+    총액 대신 ㎡당 단가로 비교하여 면적 차이를 보정합니다.
+
+    Args:
+        supply_price_per_m2: 분양단지 ㎡당 분양가 (만원)
+        market_price_per_m2: 인근 지역 ㎡당 실거래가 평균 (만원)
+
+    Returns:
+        할인율 (%) 또는 None (데이터 부족)
+    """
+    if supply_price_per_m2 <= 0 or market_price_per_m2 <= 0:
+        return None
+
+    discount = (market_price_per_m2 - supply_price_per_m2) / market_price_per_m2 * 100.0
+    return round(discount, 1)
+
+
 def score_from_discount(rate: Optional[float]) -> float:
     """할인율을 0-100 점수로 변환합니다.
 

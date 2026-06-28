@@ -114,7 +114,7 @@ def cmd_all(args: argparse.Namespace) -> None:
         return
 
     from src.housing.collectors.molit import MolitTradeCollector
-    from src.housing.analyzer.price_comparator import estimate_market_price
+    from src.housing.analyzer.price_comparator import calculate_discount_rate_per_area
 
     molit_collector = MolitTradeCollector()
     mock_mode = args.mock or not (molit_collector.client._service_key
@@ -153,16 +153,28 @@ def cmd_all(args: argparse.Namespace) -> None:
     if all_nearby_prices:
         logger.info("Collected nearby prices for %d regions", len(all_nearby_prices))
 
-    # 3단계: 각 listing을 해당 법정동코드의 실거래가와 매칭
+    # 3단계: 각 listing을 해당 법정동코드의 실거래가와 매칭 (㎡당 단가 기준)
     for listing in listings:
         lawd_cd = getattr(listing, "lawd_cd", "")
         if lawd_cd and lawd_cd in all_nearby_prices:
             nearby = all_nearby_prices[lawd_cd]
             if nearby.get("trade_count", 0) > 0:
-                listing.market_price = int(nearby.get("avg_price", 0))
-                rate, _ = estimate_market_price(listing, all_nearby_prices)
-                if rate is not None:
-                    listing.discount_rate = rate
+                avg_price_per_area = nearby.get("avg_price_per_area", 0)
+                if avg_price_per_area > 0:
+                    listing.market_price = int(nearby.get("avg_price", 0))
+                    listing.market_price_per_m2 = avg_price_per_area
+                    # 대표 공급면적당 분양가 = units_info 중 최소 price_per_m2
+                    supply_prices_per_m2 = [
+                        u["price_per_m2"] for u in listing.units_info
+                        if u.get("price_per_m2", 0) > 0
+                    ]
+                    if supply_prices_per_m2:
+                        listing.supply_price_per_m2 = min(supply_prices_per_m2)
+                        rate = calculate_discount_rate_per_area(
+                            listing.supply_price_per_m2, avg_price_per_area
+                        )
+                        if rate is not None:
+                            listing.discount_rate = rate
 
     # Step 2: Analyze
     from src.housing.analyzer.scorer import calculate_scores_batch
