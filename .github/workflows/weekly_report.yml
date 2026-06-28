@@ -45,19 +45,16 @@ jobs:
           key = os.environ.get("DATA_GO_KR_API_KEY", "")
           results = {}
 
-          url = "http://apis.data.go.kr/B552555/lhLeaseNoticeInfo1/lhLeaseNoticeInfo1"
+          # LH 15058530 분양임대공고문 조회
+          url1 = "http://apis.data.go.kr/B552555/lhLeaseNoticeInfo1/lhLeaseNoticeInfo1"
           for code in ["05", "06", "13"]:
               params = {
-                  "serviceKey": key,
-                  "pageNo": 1,
-                  "numOfRows": 10,
-                  "UPP_AIS_TP_CD": code,
-                  "type": "json",
+                  "serviceKey": key, "pageNo": 1, "numOfRows": 10,
+                  "UPP_AIS_TP_CD": code, "type": "json",
               }
-              resp = requests.get(url, params=params, timeout=30)
+              resp = requests.get(url1, params=params, timeout=30)
               data = resp.json()
               info = {"status": resp.status_code}
-
               if isinstance(data, list):
                   info["list_len"] = len(data)
                   for i, elem in enumerate(data):
@@ -73,8 +70,30 @@ jobs:
                               info[f"elem_{i}_header"] = elem["resHeader"]
               elif isinstance(data, dict):
                   info["dict_keys"] = list(data.keys())
+              results[f"announce_code_{code}"] = info
 
-              results[f"code_{code}"] = info
+          # LH 15072459 용지공고 조회
+          url2 = "https://api.odcloud.kr/api/15072459/v1/uddi:cfeb195f-6996-426d-99b2-9a2dfa83e2fa"
+          params2 = {"serviceKey": key, "page": 1, "perPage": 5}
+          resp2 = requests.get(url2, params=params2, timeout=30)
+          info2 = {"status": resp2.status_code}
+          try:
+              data2 = resp2.json()
+              info2["resp_type"] = type(data2).__name__
+              info2["resp_keys"] = list(data2.keys()) if isinstance(data2, dict) else []
+              if isinstance(data2, dict):
+                  if "data" in data2:
+                      dlist = data2["data"]
+                      info2["data_len"] = len(dlist)
+                      if dlist:
+                          info2["first_item_keys"] = list(dlist[0].keys())
+                          info2["first_item_sample"] = {k: str(v)[:80] for k, v in list(dlist[0].items())[:10]}
+                  else:
+                      info2["raw_preview"] = json.dumps(data2, ensure_ascii=False)[:500]
+          except Exception as e:
+              info2["error"] = str(e)
+              info2["raw"] = resp2.text[:500]
+          results["land_api"] = info2
 
           print(json.dumps(results, ensure_ascii=False, indent=2, default=str))
           with open("/tmp/lh_debug.json", "w") as f:
