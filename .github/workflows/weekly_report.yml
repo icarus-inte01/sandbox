@@ -43,72 +43,42 @@ jobs:
           import requests
 
           key = os.environ.get("DATA_GO_KR_API_KEY", "")
-          debug = {"key_set": bool(key), "key_len": len(key)}
+          results = {}
 
-          # LH 15058530 announce API
           url = "http://apis.data.go.kr/B552555/lhLeaseNoticeInfo1/lhLeaseNoticeInfo1"
-          params = {
-              "serviceKey": key,
-              "pageNo": 1,
-              "numOfRows": 5,
-              "UPP_AIS_TP_CD": "05",
-              "type": "json",
-          }
-          debug["url"] = url
-          resp = requests.get(url, params=params, timeout=30)
-          debug["status"] = resp.status_code
-          debug["content_type"] = resp.headers.get("Content-Type", "")
-          debug["raw_preview"] = resp.text[:500]
-
-          try:
+          for code in ["05", "06", "13"]:
+              params = {
+                  "serviceKey": key,
+                  "pageNo": 1,
+                  "numOfRows": 10,
+                  "UPP_AIS_TP_CD": code,
+                  "type": "json",
+              }
+              resp = requests.get(url, params=params, timeout=30)
               data = resp.json()
-          except Exception as e:
-              debug["json_error"] = str(e)
-              debug["raw_full"] = resp.text[:5000]
-              with open("/tmp/lh_debug.json", "w") as f:
-                  json.dump(debug, f, ensure_ascii=False, default=str)
-              sys.exit(1)
+              info = {"status": resp.status_code}
 
-          debug["response_type"] = type(data).__name__
+              if isinstance(data, list):
+                  info["list_len"] = len(data)
+                  for i, elem in enumerate(data):
+                      if isinstance(elem, dict):
+                          info[f"elem_{i}_keys"] = list(elem.keys())
+                          if "dsList" in elem:
+                              ds = elem["dsList"]
+                              info[f"elem_{i}_dsList_len"] = len(ds)
+                              if ds:
+                                  info[f"elem_{i}_dsList_first_keys"] = list(ds[0].keys())
+                                  info[f"elem_{i}_dsList_first_sample"] = {k: str(v)[:80] for k, v in list(ds[0].items())[:10]}
+                          if "resHeader" in elem:
+                              info[f"elem_{i}_header"] = elem["resHeader"]
+              elif isinstance(data, dict):
+                  info["dict_keys"] = list(data.keys())
 
-          if isinstance(data, list):
-              debug["list_len"] = len(data)
-              if data and isinstance(data[0], dict):
-                  debug["first_element_keys"] = list(data[0].keys())
-                  if "dsSch" in data[0]:
-                      items = data[0]["dsSch"]
-                      debug["dsSch_count"] = len(items)
-                      if items:
-                          debug["first_item_keys"] = list(items[0].keys())
-                          debug["first_item_sample"] = {k: str(v)[:100] for k, v in list(items[0].items())[:10]}
-          elif isinstance(data, dict):
-              debug["dict_keys"] = list(data.keys())
-              if "dsSch" in data:
-                  items = data["dsSch"]
-                  debug["dsSch_count"] = len(items)
-                  if items:
-                      debug["first_item_keys"] = list(items[0].keys())
-                      debug["first_item_sample"] = {k: str(v)[:100] for k, v in list(items[0].items())[:10]}
-              elif "response" in data:
-                  rd = data["response"]
-                  debug["header"] = rd.get("header", {})
-                  body = rd.get("body", {})
-                  debug["body_keys"] = list(body.keys())
-                  items = body.get("items", {})
-                  if isinstance(items, dict):
-                      item = items.get("item", [])
-                      if isinstance(item, list) and item:
-                          debug["item_count"] = len(item)
-                          debug["first_item_keys"] = list(item[0].keys())
-                          debug["first_item_sample"] = {k: str(v)[:100] for k, v in list(item[0].items())[:10]}
-                      elif isinstance(item, dict):
-                          debug["single_item_keys"] = list(item.keys())
+              results[f"code_{code}"] = info
 
+          print(json.dumps(results, ensure_ascii=False, indent=2, default=str))
           with open("/tmp/lh_debug.json", "w") as f:
-              json.dump(debug, f, ensure_ascii=False, default=str)
-
-          # Also print for log
-          print(json.dumps(debug, ensure_ascii=False, indent=2, default=str))
+              json.dump(results, f, ensure_ascii=False, default=str)
           PYEOF
         env:
           DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
