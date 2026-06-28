@@ -1,0 +1,64 @@
+name: Email Report
+
+on:
+  schedule:
+    # KST 08:00 = UTC 23:00 (previous day) — 매일 아침 8시
+    - cron: "0 23 * * *"
+  workflow_dispatch:
+    inputs:
+      mock:
+        description: Mock 데이터 사용 여부
+        type: boolean
+        default: false
+        required: false
+      send_email:
+        description: 이메일 발송
+        type: boolean
+        default: true
+        required: false
+
+concurrency:
+  group: email-report
+  cancel-in-progress: false
+
+jobs:
+  run-and-send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run pipeline
+        id: pipeline
+        env:
+          DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+        run: |
+          MOCK="${{ inputs.mock == true && '--mock' || '' }}"
+          SEND="${{ inputs.send_email != false && '--send-email' || '' }}"
+          python -m src.housing.cli $MOCK all --output output/report.html $SEND
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: housing-report
+          path: output/report.html
+          retention-days: 7

@@ -7,8 +7,10 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import smtplib
 import sys
 from datetime import datetime
+from email.mime.text import MIMEText
 from typing import Any
 
 from src.housing.config import Config
@@ -111,6 +113,44 @@ def cmd_all(args: argparse.Namespace) -> None:
         logger.warning("No listings collected. Skipping analysis & report.")
         return
 
+    from src.housing.collectors.molit import MolitTradeCollector
+    from src.housing.analyzer.price_comparator import estimate_market_price
+
+    molit_collector = MolitTradeCollector()
+    mock_mode = args.mock or not (molit_collector.client._service_key
+                                   and not molit_collector.client._service_key.startswith("${"))
+
+    # 청약홈 3-digit SUBSCRPT_AREA_CODE → 5-digit 법정동코드 (법정동 시/군/구)
+    CHEONGYAK_CODE_TO_LAWD: dict[str, str] = {
+        "100": "11110", "200": "42110", "300": "30110", "312": "44130",
+        "338": "36110", "360": "43110", "400": "28110", "410": "41110",
+        "500": "29110", "513": "46110", "560": "45110", "600": "26110",
+        "621": "48120", "680": "31110", "690": "50110", "700": "27110",
+        "712": "47110",
+    }
+
+    # 모든 시/도에 대해 실거래가 수집
+    all_nearby_prices: dict[str, dict[str, Any]] = {}
+    for cheongyak_code, lawd_cd in CHEONGYAK_CODE_TO_LAWD.items():
+        prices = molit_collector.get_nearby_prices(lawd_cd, months_back=6, mock=mock_mode)
+        all_nearby_prices[cheongyak_code] = prices
+        if prices.get("trade_count", 0) > 0:
+            logger.info("  -> nearby prices for %s: avg=%d만원 (%d건)",
+                       cheongyak_code, prices["avg_price"], prices["trade_count"])
+
+    if all_nearby_prices:
+        logger.info("Collected nearby prices for %d regions", len(all_nearby_prices))
+
+    for listing in listings:
+        rc = listing.region_code
+        if rc and rc in all_nearby_prices:
+            nearby = all_nearby_prices[rc]
+            if nearby.get("trade_count", 0) > 0:
+                listing.market_price = int(nearby.get("avg_price", 0))
+                rate, _ = estimate_market_price(listing, all_nearby_prices)
+                if rate is not None:
+                    listing.discount_rate = rate
+
     # Step 2: Analyze
     from src.housing.analyzer.scorer import calculate_scores_batch
     from src.housing.analyzer.ranker import rank_listings, top_n
@@ -136,6 +176,45 @@ def cmd_all(args: argparse.Namespace) -> None:
     logger.info("=== E2E Pipeline Complete ===")
     print(f"\nDone. Report: {output_path}")
     print(f"Total listings: {len(listings)}, Top {len(top)} scored & ranked.")
+
+    if getattr(args, "send_email", False):
+        _send_report_email(html, output_path)
+
+
+def _send_report_email(html_content: str, report_path: str) -> None:
+    """SMTP로 HTML 리포트를 이메일로 발송합니다.
+
+    환경변수: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, MAIL_TO, MAIL_FROM
+    """
+    smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+    smtp_user = os.environ.get("SMTP_USER", "")
+    smtp_pass = os.environ.get("SMTP_PASS", "")
+    mail_to = os.environ.get("MAIL_TO", smtp_user)
+    mail_from = os.environ.get("MAIL_FROM", smtp_user)
+
+    if not smtp_user or not smtp_pass:
+        logger.warning("SMTP_USER/SMTP_PASS not set. Skipping email.")
+        return
+    if not mail_to:
+        logger.warning("MAIL_TO not set. Skipping email.")
+        return
+
+    msg = MIMEText(html_content, "html", "utf-8")
+    msg["Subject"] = f"분양정보 유망도 리포트 ({datetime.now().strftime('%Y-%m-%d')})"
+    msg["From"] = mail_from
+    msg["To"] = mail_to
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(mail_from, [mail_to], msg.as_string())
+        logger.info("Email sent to %s via %s:%d", mail_to, smtp_host, smtp_port)
+        print(f"Email sent to {mail_to}")
+    except Exception as e:
+        logger.error("Failed to send email: %s", e)
+        print(f"Failed to send email: {e}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -186,6 +265,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="리포트 출력 경로 (기본: output/report.html)")
     p_all.add_argument("--source", choices=list(COLLECTOR_MAP.keys()) + ["all"],
                        default="all", help="수집 소스 (기본: all)")
+    p_all.add_argument("--send-email", action="store_true",
+                       help="리포트 생성 후 이메일 발송 (SMTP 환경변수 필요)")
 
     return parser
 
