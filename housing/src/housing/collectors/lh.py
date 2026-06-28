@@ -72,6 +72,13 @@ class LHCollector(BaseCollector):
     def _fetch_announce_list(self, upp_ais_tp_cd: str = "05") -> list[dict[str, Any]]:
         """LH 분양임대공고문 API를 호출하여 목록을 반환합니다.
 
+        LH REST API는 고유한 JSON 배열 구조로 응답합니다:
+            [
+              {"dsSch": [검색조건_echo]},
+              {"dsList": [실제_항목들], "resHeader": [{"SS_CODE": "Y", ...}]}
+            ]
+        dsList가 실제 데이터이며, dsSch는 요청 파라미터를 그대로 반영한 것입니다.
+
         Args:
             upp_ais_tp_cd: 공고유형코드 (05=분양주택, 06=임대주택, 13=주거복지)
         """
@@ -83,23 +90,23 @@ class LHCollector(BaseCollector):
         }
         resp = self.client.fetch(LH_ANNOUNCE_URL, params)
 
-        # [{"dsSch": [실제항목들]}] 포맷 — LH REST API가 배열로 감싸서 반환
+        # LH REST API는 [{"dsSch": [...]}, {"dsList": [...], "resHeader": [...]}] 구조로 응답
         if isinstance(resp, list):
-            if resp and isinstance(resp[0], dict) and "dsSch" in resp[0]:
-                items = resp[0]["dsSch"]
-                logger.info("LH dsSch format — %d items for code %s", len(items), upp_ais_tp_cd)
-                if items:
-                    logger.info("LH dsSch first item keys: %s", list(items[0].keys()))
-                return items
-            return resp
+            for elem in resp:
+                if isinstance(elem, dict) and "dsList" in elem:
+                    items = elem["dsList"]
+                    if items:
+                        logger.info("LH dsList — %d items for code %s", len(items), upp_ais_tp_cd)
+                    return items
+            logger.info("LH API — no dsList found for code %s", upp_ais_tp_cd)
+            return []
 
-        # {"dsSch": [...], "response": {...}} — 혼합 구조
         if isinstance(resp, dict) and "dsSch" in resp:
             items = resp["dsSch"]
-            logger.info("LH dsSch format (dict) — %d items for code %s", len(items), upp_ais_tp_cd)
+            if items:
+                logger.info("LH dsSch format (dict) — %d items for code %s", len(items), upp_ais_tp_cd)
             return items
 
-        # 표준 response > header > body > items > item 구조
         header = resp.get("response", {}).get("header", {})
         if header.get("resultCode") != "00":
             logger.warning("LH API error (%s): %s %s", upp_ais_tp_cd,
@@ -273,8 +280,8 @@ class LHCollector(BaseCollector):
             supply_type = SupplyType.LAND
         else:
             atype = (
-                item.get("ais_tp_cd_nm") or item.get("UPP_AIS_TP_CD_NM")
-                or item.get("announce_type", "")
+                item.get("ais_tp_cd_nm") or item.get("AIS_TP_CD_NM")
+                or item.get("UPP_AIS_TP_CD_NM") or item.get("announce_type", "")
             )
             if "행복" in atype:
                 supply_type = SupplyType.PUBLIC
