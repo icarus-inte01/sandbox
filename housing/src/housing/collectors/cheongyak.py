@@ -161,29 +161,24 @@ class CheongyakCollector(BaseCollector):
 
     def _to_listing(self, item: dict[str, Any]) -> SaleListing:
         """API 응답 아이템을 SaleListing으로 변환합니다."""
-        name = item.get("house_nm", "알 수 없음")
-        location = item.get("suply_location", "")
-        units = int(item.get("total_suply_hs_shl", 0) or 0)
-        # 분양금액: 공공데이터는 ㎡당 분양가인 경우가 많으므로
-        # 여기서는 총분양가(만원)로 가정
+        name = item.get("HOUSE_NM") or item.get("house_nm") or "알 수 없음"
+        location = item.get("HSSPLY_ADRES") or item.get("suply_location") or ""
+        units = int(item.get("TOT_SUPLY_HSHLDCO") or item.get("total_suply_hs_shl") or 0)
         price = int(item.get("suply_amount", 0) or 0)
-        builder = item.get("builder", "")
-        region_code = item.get("region_code", "")
+        builder = item.get("CNSTRCT_ENTRPS_NM") or item.get("builder") or ""
+        region_code = item.get("SUBSCRPT_AREA_CODE") or item.get("region_code") or ""
 
-        # 분양유형 판별
-        pblanc_knd = item.get("pblanc_knd", "")
-        if "아파트" in pblanc_knd:
+        house_type = item.get("HOUSE_SECD_NM") or item.get("HOUSE_DTL_SECD_NM") or item.get("pblanc_knd") or ""
+        if "아파트" in house_type or "분양" in house_type:
             supply_type = SupplyType.APT
-        elif "공공" in pblanc_knd or "행복" in name:
+        elif "공공" in house_type or "행복" in name or "신혼" in house_type:
             supply_type = SupplyType.PUBLIC
         else:
             supply_type = SupplyType.APT
 
-        # 분양상태 판별 (공고일 기준 단순 추정)
-        announcement_date = item.get("rcrit_pblanc_de", "")
+        announcement_date = item.get("RCRIT_PBLANC_DE") or item.get("rcrit_pblanc_de") or ""
         status = self._estimate_status(announcement_date, name)
 
-        # 지역명
         region_name = REGION_CODE_MAP.get(region_code[:2], "")
         if location and not region_name:
             region_name = location.split()[0] if location else ""
