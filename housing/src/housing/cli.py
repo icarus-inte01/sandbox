@@ -120,7 +120,7 @@ def cmd_all(args: argparse.Namespace) -> None:
     mock_mode = args.mock or not (molit_collector.client._service_key
                                    and not molit_collector.client._service_key.startswith("${"))
 
-    # 청약홈 3-digit SUBSCRPT_AREA_CODE → 5-digit 법정동코드 (법정동 시/군/구)
+    # 시/도 fallback: 청약홈 3-digit SUBSCRPT_AREA_CODE → 5-digit 법정동코드
     CHEONGYAK_CODE_TO_LAWD: dict[str, str] = {
         "100": "11110", "200": "42110", "300": "30110", "312": "44130",
         "338": "36110", "360": "43110", "400": "28110", "410": "41110",
@@ -129,22 +129,35 @@ def cmd_all(args: argparse.Namespace) -> None:
         "712": "47110",
     }
 
-    # 모든 시/도에 대해 실거래가 수집
+    from src.housing.analyzer.region_data import address_to_lawd_cd
+
+    # 1단계: 각 listing의 주소에서 시/군/구 단위 법정동코드 추출
+    listing_lawd_cds: set[str] = set()
+    for listing in list(listings):
+        lawd_cd = address_to_lawd_cd(listing.region)
+        if not lawd_cd:
+            lawd_cd = CHEONGYAK_CODE_TO_LAWD.get(listing.region_code, "")
+        listing.lawd_cd = lawd_cd
+        if lawd_cd:
+            listing_lawd_cds.add(lawd_cd)
+
+    # 2단계: 수집된 모든 법정동코드에 대해 실거래가 조회
     all_nearby_prices: dict[str, dict[str, Any]] = {}
-    for cheongyak_code, lawd_cd in CHEONGYAK_CODE_TO_LAWD.items():
-        prices = molit_collector.get_nearby_prices(lawd_cd, months_back=6, mock=mock_mode)
-        all_nearby_prices[cheongyak_code] = prices
+    for lawd_cd in sorted(listing_lawd_cds):
+        prices = molit_collector.get_nearby_prices(lawd_cd, months_back=3, mock=mock_mode)
+        all_nearby_prices[lawd_cd] = prices
         if prices.get("trade_count", 0) > 0:
             logger.info("  -> nearby prices for %s: avg=%d만원 (%d건)",
-                       cheongyak_code, prices["avg_price"], prices["trade_count"])
+                       lawd_cd, prices["avg_price"], prices["trade_count"])
 
     if all_nearby_prices:
         logger.info("Collected nearby prices for %d regions", len(all_nearby_prices))
 
+    # 3단계: 각 listing을 해당 법정동코드의 실거래가와 매칭
     for listing in listings:
-        rc = listing.region_code
-        if rc and rc in all_nearby_prices:
-            nearby = all_nearby_prices[rc]
+        lawd_cd = getattr(listing, "lawd_cd", "")
+        if lawd_cd and lawd_cd in all_nearby_prices:
+            nearby = all_nearby_prices[lawd_cd]
             if nearby.get("trade_count", 0) > 0:
                 listing.market_price = int(nearby.get("avg_price", 0))
                 rate, _ = estimate_market_price(listing, all_nearby_prices)
