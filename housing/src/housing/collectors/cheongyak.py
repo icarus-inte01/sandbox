@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Optional
 
 from src.housing.collectors.base import BaseCollector
@@ -72,20 +72,42 @@ class CheongyakCollector(BaseCollector):
             return self._mock_collect(region)
 
         try:
+            now = datetime.now()
+            cutoff = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+
             params = {"page": 1, "perPage": 100}
+            # CLOSED(공고일 30~365일 전)는 API 단에서 제외
+            params["cond[RCRIT_PBLANC_DE::GTE]"] = cutoff
             if region:
                 params["cond[SUBSCRPT_AREA_CODE_NM::EQ]"] = region
 
             detail_items = self.client.fetch_all(API_LIST, params, max_pages=5)
 
-            model_params = {k: v for k, v in params.items() if not k.startswith("cond[")}
-            try:
-                # model endpoint는 detail보다 totalCount가 ~5배 많음 (주택형별 row)
-                # 30페이지(3,000개)면 detail 5페이지(500개)의 99.8% 커버
-                model_items = self.client.fetch_all(API_MDL, model_params, max_pages=30)
-            except Exception:
-                logger.warning("Model endpoint failed, proceeding without price data.")
-                model_items = []
+            # detail Items의 house_manage_no만 model에서 조회
+            target_keys = {item.get("HOUSE_MANAGE_NO", "") for item in detail_items if item.get("HOUSE_MANAGE_NO")}
+
+            model_items: list[dict] = []
+            if target_keys:
+                model_params = {"page": 1, "perPage": 100}
+                try:
+                    found_keys: set[str] = set()
+                    for page in range(1, 31):
+                        model_params["page"] = page
+                        result = self.client.fetch(API_MDL, dict(model_params))
+                        data = result.get("data", [])
+                        if not data:
+                            break
+                        model_items.extend(data)
+                        for m in data:
+                            k = m.get("HOUSE_MANAGE_NO", "")
+                            if k in target_keys:
+                                found_keys.add(k)
+                        if found_keys == target_keys:
+                            logger.info("Model detail 커버: %d개 단지, page %d에서 완료", len(target_keys), page)
+                            break
+                except Exception:
+                    logger.warning("Model endpoint failed, proceeding without price data.")
+                    model_items = []
 
             models_by_house: dict[str, list[dict]] = {}
             for m in model_items:
