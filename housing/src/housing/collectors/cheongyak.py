@@ -73,10 +73,10 @@ class CheongyakCollector(BaseCollector):
 
         try:
             now = datetime.now()
-            cutoff = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+            cutoff = (now - timedelta(days=90)).strftime("%Y-%m-%d")
 
             params = {"page": 1, "perPage": 100}
-            # CLOSED(공고일 30~365일 전)는 API 단에서 제외
+            # CLOSED(공고일 90일 초과)는 API 단에서 제외 (UNSOLD는 이름 키워드로 분류)
             params["cond[RCRIT_PBLANC_DE::GTE]"] = cutoff
             if region:
                 params["cond[SUBSCRPT_AREA_CODE_NM::EQ]"] = region

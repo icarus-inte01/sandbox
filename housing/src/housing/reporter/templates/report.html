@@ -313,8 +313,7 @@ table.units-table tbody tr:last-child td {
         <tr>
           <th class="text-left">단지명</th>
           <th class="text-left">위치</th>
-          <th style="width:60px;">규모</th>
-          <th style="width:72px;">분양금액</th>
+          <th style="width:52px;">용도</th>
           <th>공고일</th>
         </tr>
       </thead>
@@ -322,12 +321,15 @@ table.units-table tbody tr:last-child td {
         {% for item in land_listings %}
         <tr>
           <td class="text-left">
+            {% if item.dtl_url %}
+            <a href="{{ item.dtl_url }}" target="_blank" style="color:#1a365d;text-decoration:underline;">{{ item.name }}</a>
+            {% else %}
             <strong>{{ item.name }}</strong>
+            {% endif %}
             <br><span style="font-size:10px;color:#6b7280;">{{ item.builder }}</span>
           </td>
           <td class="text-left" style="font-size:11px;">{{ item.region }}</td>
-          <td>{% if item.units > 0 %}{{ item.units }}필지{% else %}-{% endif %}</td>
-          <td>{{ item.price_str }}</td>
+          <td style="font-size:11px;">{% if item.supply_purpose %}{{ item.supply_purpose }}{% else %}-{% endif %}</td>
           <td style="font-size:11px;">{{ item.announce_date }}</td>
         </tr>
         {% endfor %}

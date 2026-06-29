@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 COLLECTOR_MAP: dict[str, str] = {
     "cheongyak": "src.housing.collectors.cheongyak.CheongyakCollector",
     "lh": "src.housing.collectors.lh.LHCollector",
-    "molit": "src.housing.collectors.molit.MolitTradeCollector",
     "naver": "src.housing.collectors.naver.NaverCollector",
 }
 
@@ -39,21 +38,14 @@ def cmd_collect(args: argparse.Namespace) -> list[SaleListing]:
     """데이터 수집 서브커맨드."""
     all_listings: list[SaleListing] = []
 
-    sources = ["cheongyak", "lh", "molit", "naver"] if args.source == "all" else [args.source]
+    sources = ["cheongyak", "lh", "naver"] if args.source == "all" else [args.source]
 
     for src in sources:
         try:
             collector = _import_collector(src)
             logger.info("Collecting from %s...", src)
 
-            if src == "lh":
-                listings = collector.collect(mock=args.mock)
-            elif src == "molit":
-                # Molit collector는 실거래가 전용이므로 collect()는 empty 반환
-                logger.info("Molit collector skipped (use analyze for price comparison)")
-                continue
-            else:
-                listings = collector.collect(mock=args.mock)
+            listings = collector.collect(mock=args.mock)
 
             all_listings.extend(listings)
             logger.info("  -> %d items from %s", len(listings), src)
@@ -113,10 +105,17 @@ def cmd_all(args: argparse.Namespace) -> None:
         logger.warning("No listings collected. Skipping analysis & report.")
         return
 
-    # Step 1b: 분류 — 토지 / 주택(진행중) / 주택(마감)
+    # Step 1b: 분류 — 토지(주택건축가능용지) / 주택(진행중) / 주택(마감)
+    # 15058530 API 목록에는 공급용도 필드가 없으므로 공고명 키워드로도 필터링
+    _RESIDENTIAL_LAND_USES = {
+        "실수요자택지 점포겸용", "준주거용지", "주상복합(85㎡초과 등)",
+    }
+    _RESIDENTIAL_KEYWORDS = {"점포겸용", "준주거", "주상복합"}
+    all_land = [l for l in all_listings if l.supply_type == SupplyType.LAND]
     land_listings = [
-        l for l in all_listings
-        if l.supply_type == SupplyType.LAND
+        l for l in all_land
+        if l.raw_data.get("공급용도", "") in _RESIDENTIAL_LAND_USES
+        or any(kw in l.name for kw in _RESIDENTIAL_KEYWORDS)
     ]
     housing_active = [
         l for l in all_listings

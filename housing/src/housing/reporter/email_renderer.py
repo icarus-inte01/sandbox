@@ -171,6 +171,7 @@ def render_report(
         for l in land_listings:
             price_str = _krw_format(l.price) if l.price > 0 else "-"
             announce_date = l.announcement_date if l.announcement_date else "-"
+            dtl_url = l.raw_data.get("dtl_url", "") if l.raw_data else ""
             land_data.append({
                 "name": l.name,
                 "region": l.region,
@@ -178,6 +179,8 @@ def render_report(
                 "price_str": price_str,
                 "announce_date": announce_date,
                 "builder": l.builder or "-",
+                "supply_purpose": l.supply_purpose or "",
+                "dtl_url": dtl_url,
             })
 
     html = template.render(

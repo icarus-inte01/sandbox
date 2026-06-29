@@ -1,11 +1,10 @@
-"""LH 한국토지주택공사 분양/택지 정보 수집기.
+"""LH 한국토지주택공사 토지/용지 정보 수집기.
 
-공공데이터 API를 통해 LH의 분양임대공고, 공급정보, 용지(입찰) 공고를 수집합니다.
+공공데이터 API를 통해 LH의 토지(용지) 공고를 수집합니다.
+분양주택/주거복지 공고는 cheongyak으로 대체되므로 수집하지 않습니다.
 
 연동 API:
-- ID 15058530: 분양임대공고문 조회
-- ID 15056765: 분양임대공고별 공급정보
-- ID 15072459: 용지(입찰) 공고 내역
+- ID 15058530: 분양임대공고문 조회 (upp_ais_tp_cd=01 토지만 수집)
 """
 from __future__ import annotations
 
@@ -19,24 +18,28 @@ from src.housing.models import SaleListing, SupplyType, SaleStatus
 logger = logging.getLogger(__name__)
 
 
-# LH API 엔드포인트
-# 15058530: 분양임대공고문 조회 (고정 REST — serviceKey만 있으면 사용 가능)
-# 15056765: 분양임대공급정보 (고정 REST, 상세 조회용)
-# 15072459: 용지공고내역 (파일데이터→odcloud 변환, 계정별 uddi URL 필요)
 LH_ANNOUNCE_URL = "http://apis.data.go.kr/B552555/lhLeaseNoticeInfo1/lhLeaseNoticeInfo1"
-LH_SUPPLY_URL = "http://apis.data.go.kr/B552555/lhLeaseNoticeSplInfo1/getLeaseNoticeSplInfo1"
-LH_LAND_URL = "https://api.odcloud.kr/api/15072459/v1/uddi:cfeb195f-6996-426d-99b2-9a2dfa83e2fa"
 
+PAN_SS_STATUS_MAP: dict[str, SaleStatus] = {
+    "공고중": SaleStatus.OPEN,
+    "접수중": SaleStatus.OPEN,
+    "접수마감": SaleStatus.CLOSED,
+    "상담요청": SaleStatus.UNSOLD,
+}
 
-# 공고유형코드 매핑
-ANNOUNCE_TYPE_MAP: dict[str, str] = {
-    "01": "분양",
-    "02": "임대",
-    "03": "혼합",
-    "04": "국민임대",
-    "05": "행복주택",
-    "06": "장기전세",
-    "99": "기타",
+_SUPPLY_PURPOSE_KEYWORDS: dict[str, str] = {
+    "점포겸용": "점포겸용",
+    "준주거": "준주거",
+    "주상복합": "주상복합",
+    "근린생활시설": "근린생활시설",
+    "상업업무": "상업업무",
+    "상업시설": "상업시설",
+    "업무시설": "업무시설",
+    "주상": "주상복합",
+    "주거": "주거",
+    "상업": "상업",
+    "공동주택": "공동주택",
+    "단독주택": "단독주택",
 }
 
 
@@ -47,44 +50,11 @@ class LHCollector(BaseCollector):
         super().__init__(config)
         self.source_name = "lh"
 
-    def collect_apt(
-        self, mock: bool = False
-    ) -> list[SaleListing]:
-        """LH 아파트 분양공고를 수집합니다.
-
-        분양임대공고문 조회 API (15058530)를 사용합니다.
-        """
-        if mock:
-            return self._mock_collect_apt()
-
-        if not self.client._service_key or self.client._service_key.startswith("${"):
-            logger.warning("DATA_GO_KR_API_KEY not configured. Falling back to mock data.")
-            return self._mock_collect_apt()
-
-        try:
-            items = self._fetch_announce_list(upp_ais_tp_cd="05")
-            items += self._fetch_announce_list(upp_ais_tp_cd="13")  # 분양 + 주거복지
-            return [self._to_listing(item, "apt") for item in items]
-        except Exception as e:
-            logger.error("LH announce API call failed: %s", e)
-            return self._mock_collect_apt()
-
-    def _fetch_announce_list(self, upp_ais_tp_cd: str = "05") -> list[dict[str, Any]]:
-        """LH 분양임대공고문 API를 호출하여 목록을 반환합니다.
-
-        LH REST API는 고유한 JSON 배열 구조로 응답합니다:
-            [
-              {"dsSch": [검색조건_echo]},
-              {"dsList": [실제_항목들], "resHeader": [{"SS_CODE": "Y", ...}]}
-            ]
-        dsList가 실제 데이터이며, dsSch는 요청 파라미터를 그대로 반영한 것입니다.
-
-        Args:
-            upp_ais_tp_cd: 공고유형코드 (05=분양주택, 06=임대주택, 13=주거복지)
-        """
+    def _fetch_announce_list(self, upp_ais_tp_cd: str = "01") -> list[dict[str, Any]]:
+        """15058530 API를 호출하여 공고 목록을 반환합니다."""
         params: dict[str, Any] = {
-            "pageNo": 1,
-            "numOfRows": 100,
+            "PAGE": 1,
+            "PG_SZ": 500,
             "UPP_AIS_TP_CD": upp_ais_tp_cd,
             "type": "json",
         }
@@ -126,10 +96,10 @@ class LHCollector(BaseCollector):
     ) -> list[SaleListing]:
         """LH 택지/용지 공고를 수집합니다.
 
-        용지(입찰) 공고 내역 API (15072459)를 사용합니다.
-        15072459는 계정별 uddi URL이 필요 — LH_LAND_URL이 설정될 때까지 mock 사용.
+        15058530 분양임대공고문 조회 API에서 용지 (UPP_AIS_TP_CD=01)를 가져옵니다.
+        15072459(ODCloud)는 15058530으로 대체되었습니다.
         """
-        if mock or LH_LAND_URL is None:
+        if mock:
             return self._mock_collect_land()
 
         if not self.client._service_key or self.client._service_key.startswith("${"):
@@ -137,83 +107,27 @@ class LHCollector(BaseCollector):
             return self._mock_collect_land()
 
         try:
-            params: dict[str, Any] = {"page": 1, "perPage": 100}
-            resp = self.client.fetch(LH_LAND_URL, params)
-            data = self.client._extract_data(resp)
-            return [self._to_listing(item, "land") for item in data]
+            items = self._fetch_announce_list(upp_ais_tp_cd="01")
+            results = []
+            for item in items:
+                listing = self._to_listing(item, "land")
+                if listing.status != SaleStatus.CLOSED:
+                    results.append(listing)
+            logger.info("LH land — total %d, CLOSED 제외 %d개",
+                        len(items), len(items) - len(results))
+            return results
         except Exception as e:
             logger.error("LH land API call failed: %s", e)
             return self._mock_collect_land()
 
     def collect(self, **kwargs) -> list[SaleListing]:
-        """전체 LH 데이터 수집 (분양 + 택지)."""
+        """LH 토지/용지 데이터 수집."""
         mock = kwargs.get("mock", False)
-        results = []
-        results.extend(self.collect_apt(mock=mock))
-        results.extend(self.collect_land(mock=mock))
+        results = self.collect_land(mock=mock)
         if results:
-            logger.info("LH collect — first item: name=%r region=%r price=%r units=%r source=%s",
-                        results[0].name, results[0].region, results[0].price,
-                        results[0].units, results[0].source)
             logger.info("LH collect — total %d items, sample of 3 names: %s",
                         len(results), [r.name for r in results[:3]])
         return results
-
-    def _mock_collect_apt(self) -> list[SaleListing]:
-        """Mock LH 분양 데이터."""
-        mock_data = [
-            {
-                "pblanc_no": "LH2026001",
-                "pblanc_nm": "LH 행복주택 의정부 민락",
-                "region": "경기도 의정부시",
-                "announce_type": "행복주택",
-                "total_units": 480,
-                "supply_price": 22000,
-                "announce_date": "2026-07-01",
-                "builder": "LH",
-            },
-            {
-                "pblanc_no": "LH2026002",
-                "pblanc_nm": "LH 천안 성성 공공분양",
-                "region": "충청남도 천안시",
-                "announce_type": "분양",
-                "total_units": 620,
-                "supply_price": 28000,
-                "announce_date": "2026-06-15",
-                "builder": "LH",
-            },
-            {
-                "pblanc_no": "LH2026003",
-                "pblanc_nm": "LH 부산 정관 공공분양",
-                "region": "부산광역시 기장군",
-                "announce_type": "분양",
-                "total_units": 350,
-                "supply_price": 25000,
-                "announce_date": "2026-07-20",
-                "builder": "LH",
-            },
-            {
-                "pblanc_no": "LH2026004",
-                "pblanc_nm": "LH 인천 검단 행복주택",
-                "region": "인천광역시 서구",
-                "announce_type": "행복주택",
-                "total_units": 720,
-                "supply_price": 19000,
-                "announce_date": "2026-08-01",
-                "builder": "LH",
-            },
-            {
-                "pblanc_no": "LH2026005",
-                "pblanc_nm": "LH 대전 노은 공공분양",
-                "region": "대전광역시 유성구",
-                "announce_type": "분양",
-                "total_units": 280,
-                "supply_price": 30000,
-                "announce_date": "2026-05-30",
-                "builder": "LH",
-            },
-        ]
-        return [self._to_listing(item, "apt") for item in mock_data]
 
     def _mock_collect_land(self) -> list[SaleListing]:
         """Mock LH 택지 데이터."""
@@ -288,28 +202,45 @@ class LHCollector(BaseCollector):
             else:
                 supply_type = SupplyType.APT
 
+        pan_ss = item.get("pan_ss") or item.get("PAN_SS", "")
+        status = PAN_SS_STATUS_MAP.get(pan_ss, SaleStatus.PLANNED)
+
         units = int(item.get("total_units", 0) or 0)
-        # LH 용지 API: 공급예정금액(원) → 만원 변환
         raw_price = (
             item.get("공급예정금액") or item.get("SPL_XPC_AMT")
             or item.get("supply_price", 0) or 0
         )
         if isinstance(raw_price, str) and raw_price.isdigit():
             price = int(raw_price)
-            if price > 100_000_000:  # 원 단위면 만원으로 변환
+            if price > 100_000_000:
                 price //= 10000
         else:
             price = int(raw_price)
         builder = item.get("builder", "LH")
 
+        pan_nm = name
+        supply_purpose = ""
+        for kw, label in _SUPPLY_PURPOSE_KEYWORDS.items():
+            if kw in pan_nm:
+                supply_purpose = label
+                break
+
+        dtl_url = item.get("dtl_url") or item.get("DTL_URL", "")
+        if not dtl_url:
+            pan_id = item.get("pan_id") or item.get("PAN_ID", "")
+            if pan_id:
+                dtl_url = f"https://apply.lh.or.kr/lhapply/apply/wt/wrtanc/selectWrtancInfo.do?panId={pan_id}"
+
         return SaleListing(
             name=name,
             region=region,
             supply_type=supply_type,
-            status=SaleStatus.PLANNED,
+            status=status,
             units=units,
             price=price,
+            supply_purpose=supply_purpose,
             builder=builder,
             announcement_date=announce_date,
+            raw_data={"dtl_url": dtl_url},
             source="lh",
         )

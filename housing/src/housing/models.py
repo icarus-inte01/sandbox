@@ -38,6 +38,7 @@ class SaleListing:
     price: int = 0                        # 분양금액 (만원 단위)
     market_price: int = 0                 # 인근 실거래가 참고가 (만원 단위)
     builder: str = ""                     # 시공사/건설사
+    supply_purpose: str = ""              # 공급용도 (토지: 점포겸용/준주거/근린생활시설용지 등)
     pyeong_type: str = ""                 # 주택형/전용면적 정보
     competition_rate: float = 0.0         # 청약경쟁률
     move_in_date: str = ""                # 입주예정월
