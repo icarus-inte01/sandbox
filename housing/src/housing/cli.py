@@ -121,7 +121,7 @@ def cmd_all(args: argparse.Namespace) -> None:
     housing_active = [
         l for l in all_listings
         if l.supply_type != SupplyType.LAND
-        and l.status in (SaleStatus.PLANNED, SaleStatus.OPEN)
+        and l.status in (SaleStatus.PLANNED, SaleStatus.OPEN, SaleStatus.UNSOLD)
     ]
     housing_closed = [
         l for l in all_listings
@@ -129,7 +129,7 @@ def cmd_all(args: argparse.Namespace) -> None:
         and l.status not in (SaleStatus.PLANNED, SaleStatus.OPEN)
     ]
 
-    logger.info("  → 주택(청약가능): %d개, 주택(마감): %d개, 토지: %d개",
+    logger.info("  → 주택(분양예정/청약중/미분양): %d개, 주택(마감): %d개, 토지: %d개",
                 len(housing_active), len(housing_closed), len(land_listings))
 
     if not housing_active:
