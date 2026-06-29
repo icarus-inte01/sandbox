@@ -88,6 +88,7 @@ def render_report(
     report_date: str,
     title: str = "분양정보 유망도 리포트",
     include_notes: bool = True,
+    land_listings: Optional[list[SaleListing]] = None,
 ) -> str:
     """유망도 리포트 HTML을 렌더링합니다.
 
@@ -96,6 +97,7 @@ def render_report(
         report_date: 보고서 일자 문자열
         title: 제목
         include_notes: 면책 문구 포함 여부
+        land_listings: 토지/택지 분양 리스트 (분석 없이 별도 테이블)
 
     Returns:
         렌더링된 HTML 문자열
@@ -164,11 +166,26 @@ def render_report(
         }
         scored_listings.append(d)
 
+    land_data = []
+    if land_listings:
+        for l in land_listings:
+            price_str = _krw_format(l.price) if l.price > 0 else "-"
+            announce_date = l.announcement_date if l.announcement_date else "-"
+            land_data.append({
+                "name": l.name,
+                "region": l.region,
+                "units": l.units,
+                "price_str": price_str,
+                "announce_date": announce_date,
+                "builder": l.builder or "-",
+            })
+
     html = template.render(
         title=title,
         report_date=report_date,
         listings=scored_listings,
         total_count=len(scored_listings),
         include_notes=include_notes,
+        land_listings=land_data,
     )
     return html

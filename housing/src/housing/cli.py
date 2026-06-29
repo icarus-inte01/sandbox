@@ -14,7 +14,7 @@ from email.mime.text import MIMEText
 from typing import Any
 
 from src.housing.config import Config
-from src.housing.models import SaleListing, SupplyType
+from src.housing.models import SaleListing, SupplyType, SaleStatus
 
 logger = logging.getLogger(__name__)
 
@@ -106,11 +106,41 @@ def cmd_all(args: argparse.Namespace) -> None:
     logger.info("=== E2E Pipeline Start ===")
 
     # Step 1: Collect
-    listings = cmd_collect(args)
-    logger.info("Total collected: %d listings", len(listings))
+    all_listings = cmd_collect(args)
+    logger.info("Total collected: %d listings", len(all_listings))
 
-    if not listings:
+    if not all_listings:
         logger.warning("No listings collected. Skipping analysis & report.")
+        return
+
+    # Step 1b: 분류 — 토지 / 주택(진행중) / 주택(마감)
+    land_listings = [
+        l for l in all_listings
+        if l.supply_type == SupplyType.LAND
+    ]
+    housing_active = [
+        l for l in all_listings
+        if l.supply_type != SupplyType.LAND
+        and l.status in (SaleStatus.PLANNED, SaleStatus.OPEN)
+    ]
+    housing_closed = [
+        l for l in all_listings
+        if l.supply_type != SupplyType.LAND
+        and l.status not in (SaleStatus.PLANNED, SaleStatus.OPEN)
+    ]
+
+    logger.info("  → 주택(청약가능): %d개, 주택(마감): %d개, 토지: %d개",
+                len(housing_active), len(housing_closed), len(land_listings))
+
+    if not housing_active:
+        logger.warning("No active housing listings. Skipping analysis.")
+        # 토지만 있으면 리포트는 생성 (분석 없이)
+        if not land_listings:
+            return
+        from src.housing.reporter.email_renderer import render_report
+        report_date = datetime.now().strftime("%Y-%m-%d")
+        html = render_report([], report_date, land_listings=land_listings)
+        _write_and_maybe_send(html, args)
         return
 
     from src.housing.collectors.molit import MolitTradeCollector
@@ -133,7 +163,7 @@ def cmd_all(args: argparse.Namespace) -> None:
 
     # 1단계: 각 listing의 주소에서 시/군/구 단위 법정동코드 추출
     listing_lawd_cds: set[str] = set()
-    for listing in list(listings):
+    for listing in housing_active:
         lawd_cd = address_to_lawd_cd(listing.region)
         if not lawd_cd:
             lawd_cd = CHEONGYAK_CODE_TO_LAWD.get(listing.region_code, "")
@@ -154,7 +184,7 @@ def cmd_all(args: argparse.Namespace) -> None:
         logger.info("Collected nearby prices for %d regions", len(all_nearby_prices))
 
     # 3단계: 각 listing을 해당 법정동코드의 실거래가와 매칭 (㎡당 단가 기준)
-    for listing in listings:
+    for listing in housing_active:
         lawd_cd = getattr(listing, "lawd_cd", "")
         if lawd_cd and lawd_cd in all_nearby_prices:
             nearby = all_nearby_prices[lawd_cd]
@@ -176,22 +206,27 @@ def cmd_all(args: argparse.Namespace) -> None:
                         if rate is not None:
                             listing.discount_rate = rate
 
-    # Step 2: Analyze
+    # Step 2: Analyze (housing only)
     from src.housing.analyzer.scorer import calculate_scores_batch
     from src.housing.analyzer.ranker import rank_listings, top_n
 
     config = Config()
-    scored = calculate_scores_batch(listings, config)
+    scored = calculate_scores_batch(housing_active, config)
     ranked = rank_listings(scored)
     top = top_n(ranked, n=20)
 
-    logger.info("Analyzed: %d listings, showing top %d", len(ranked), len(top))
+    logger.info("Analyzed: %d active listings, showing top %d", len(ranked), len(top))
 
     # Step 3: Report
     from src.housing.reporter.email_renderer import render_report
     report_date = datetime.now().strftime("%Y-%m-%d")
-    html = render_report(top, report_date)
+    html = render_report(top, report_date, land_listings=land_listings)
 
+    _write_and_maybe_send(html, args)
+
+
+def _write_and_maybe_send(html: str, args: argparse.Namespace) -> None:
+    """리포트 쓰기 + 조건부 이메일 발송."""
     output_path = args.output or "output/report.html"
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
@@ -200,7 +235,6 @@ def cmd_all(args: argparse.Namespace) -> None:
     logger.info("Report saved to %s (%d bytes)", output_path, len(html))
     logger.info("=== E2E Pipeline Complete ===")
     print(f"\nDone. Report: {output_path}")
-    print(f"Total listings: {len(listings)}, Top {len(top)} scored & ranked.")
 
     if getattr(args, "send_email", False):
         _send_report_email(html, output_path)

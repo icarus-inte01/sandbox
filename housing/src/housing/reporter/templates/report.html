@@ -201,6 +201,7 @@ table.units-table tbody tr:last-child td {
     </div>
 
     {% if listings %}
+    <h3 style="margin:16px 0 4px 0;font-size:14px;color:#1a365d;">🏠 주택 분양 (청약가능)</h3>
     <table>
       <thead>
         <tr>
@@ -301,8 +302,37 @@ table.units-table tbody tr:last-child td {
     </table>
     {% else %}
     <p style="text-align:center;padding:40px 0;color:#9ca3af;font-size:15px;">
-      현재 분양정보가 없습니다.
+      현재 청약가능한 주택 분양정보가 없습니다.
     </p>
+    {% endif %}
+
+    {% if land_listings %}
+    <h3 style="margin:24px 0 4px 0;font-size:14px;color:#1a365d;">📋 토지/택지 분양</h3>
+    <table>
+      <thead>
+        <tr>
+          <th class="text-left">단지명</th>
+          <th class="text-left">위치</th>
+          <th style="width:60px;">규모</th>
+          <th style="width:72px;">분양금액</th>
+          <th>공고일</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in land_listings %}
+        <tr>
+          <td class="text-left">
+            <strong>{{ item.name }}</strong>
+            <br><span style="font-size:10px;color:#6b7280;">{{ item.builder }}</span>
+          </td>
+          <td class="text-left" style="font-size:11px;">{{ item.region }}</td>
+          <td>{% if item.units > 0 %}{{ item.units }}필지{% else %}-{% endif %}</td>
+          <td>{{ item.price_str }}</td>
+          <td style="font-size:11px;">{{ item.announce_date }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
     {% endif %}
 
     <!-- FOOTER NOTES -->
