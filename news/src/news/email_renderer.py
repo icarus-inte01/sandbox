@@ -96,7 +96,7 @@ _HTML_TEMPLATE = """\
     color: #1a1a2e;
   }}
   .wrapper {{
-    max-width: 800px;
+    max-width: 960px;
     margin: 0 auto;
     padding: 16px 8px;
   }}
