@@ -83,7 +83,7 @@ jobs:
             (${{ steps.run_script.outputs.exit_code == '0' && 'OK' || 'FAILED' }})
           to: ${{ secrets.EMAIL_TO }}
           from: 박기영
-          html_body: file://news_digest.html
+          html_body: file://news/news_digest.html
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

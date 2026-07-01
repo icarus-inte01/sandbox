@@ -66,7 +66,7 @@ jobs:
             (${{ steps.run_report.outputs.report_path != '' && 'OK' || 'FAILED' }})
           to: ${{ secrets.EMAIL_TO }}
           from: 박기영
-          html_body: file://output/report.html
+          html_body: file://housing/output/report.html
 
       - name: Upload report artifact
         uses: actions/upload-artifact@v4
