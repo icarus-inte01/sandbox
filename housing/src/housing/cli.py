@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 COLLECTOR_MAP: dict[str, str] = {
     "cheongyak": "src.housing.collectors.cheongyak.CheongyakCollector",
     "lh": "src.housing.collectors.lh.LHCollector",
-    "naver": "src.housing.collectors.naver.NaverCollector",
+
     "onbid": "src.housing.collectors.onbid.OnbidCollector",
 }
 
@@ -128,7 +128,7 @@ def cmd_collect(args: argparse.Namespace) -> list[SaleListing]:
     all_listings: list[SaleListing] = []
 
     src_name = getattr(args, "source", "all")
-    sources = ["cheongyak", "lh", "naver", "onbid"] if src_name == "all" else [src_name]
+    sources = ["cheongyak", "lh", "onbid"] if src_name == "all" else [src_name]
 
     for src in sources:
         try:

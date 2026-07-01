@@ -44,7 +44,7 @@ class SaleListing:
     move_in_date: str = ""                # 입주예정월
     announcement_date: str = ""           # 모집공고일
     region_code: str = ""                 # 공급지역코드
-    source: str = ""                      # 데이터 출처 (cheongyak/lh/molit/naver)
+    source: str = ""                      # 데이터 출처 (cheongyak/lh/molit)
     raw_data: dict = field(default_factory=dict)  # 원본 데이터
     units_info: list[dict] = field(default_factory=list)  # 주택형별 상세 [(model_no, house_type, supply_area, price, households), ...]
 

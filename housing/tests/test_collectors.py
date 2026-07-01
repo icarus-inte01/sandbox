@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from src.housing.collectors.cheongyak import CheongyakCollector
 from src.housing.collectors.lh import LHCollector
-from src.housing.collectors.naver import NaverCollector
-from src.housing.collectors.molit import MolitTradeCollector
 
+
+from src.housing.collectors.molit import MolitTradeCollector
 
 class TestCheongyakCollector:
     def test_mock_collection(self):
@@ -83,10 +83,4 @@ class TestMolitCollector:
         assert c._parse_price("") == 0
 
 
-class TestNaverCollector:
-    def test_mock_collection(self):
-        """네이버 Mock 수집."""
-        c = NaverCollector()
-        listings = c.collect(mock=True)
-        assert len(listings) > 0
-        assert all(l.source == "naver" for l in listings)
+
