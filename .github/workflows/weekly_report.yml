@@ -77,7 +77,7 @@ jobs:
             분양정보 유망도 주간리포트
             (${{ steps.run_report.outputs.report_path != '' && 'OK' || 'FAILED' }})
           to: ${{ secrets.EMAIL_TO }}
-          from: GitHub Actions
+          from: 박기영 <${{ secrets.MAIL_FROM }}>
           html_body: ${{ steps.read_html.outputs.html_body }}
 
       - name: Upload report artifact
