@@ -53,20 +53,20 @@ jobs:
           VWORLD_API_KEY: ${{ secrets.VWORLD_API_KEY }}
 
       - name: Send email
-        run: |
-          python3 ../scripts/send_email.py \
-            --to "$TO" \
-            --from "박기영" \
-            --subject "$SUBJECT" \
-            --html-file "output/report.html"
-        env:
-          TO: ${{ secrets.EMAIL_TO }}
-          SUBJECT: >-
+        uses: dawidd6/action-send-mail@v3
+        if: always()
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USER }}
+          password: ${{ secrets.EMAIL_PASS }}
+          subject: >-
             ${{ job.status == 'success' && '✅' || '⚠️' }}
             분양정보 유망도 주간리포트
             (${{ steps.run_report.outputs.report_path != '' && 'OK' || 'FAILED' }})
-          EMAIL_USER: ${{ secrets.EMAIL_USER }}
-          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          to: ${{ secrets.EMAIL_TO }}
+          from: 박기영
+          html_body: file://output/report.html
 
       - name: Upload report artifact
         uses: actions/upload-artifact@v4
