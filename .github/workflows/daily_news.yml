@@ -69,26 +69,21 @@ jobs:
             news_digest.html \
             "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-      - name: Read HTML body
-        id: read_html
-        run: |
-          python3 -c "import os; html = open('news_digest.html', encoding='utf-8').read(); open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8').write('html_body<<GITHUB_EOF_MARKER\n' + html + '\nGITHUB_EOF_MARKER\n')"
-
       - name: Send email
-        uses: dawidd6/action-send-mail@v3
-        if: always()
-        with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          username: ${{ secrets.EMAIL_USER }}
-          password: ${{ secrets.EMAIL_PASS }}
-          subject: >-
+        run: |
+          python3 ../scripts/send_email.py \
+            --to "$TO" \
+            --from "박기영" \
+            --subject "$SUBJECT" \
+            --html-file "news_digest.html"
+        env:
+          TO: ${{ secrets.EMAIL_TO }}
+          SUBJECT: >-
             ${{ job.status == 'success' && '✅' || '⚠️' }}
             World News Digest
             (${{ steps.run_script.outputs.exit_code == '0' && 'OK' || 'FAILED' }})
-          to: ${{ secrets.EMAIL_TO }}
-          from: 박기영
-          html_body: ${{ steps.read_html.outputs.html_body }}
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
