@@ -96,7 +96,7 @@ _HTML_TEMPLATE = """\
     color: #1a1a2e;
   }}
   .wrapper {{
-    max-width: 640px;
+    max-width: 800px;
     margin: 0 auto;
     padding: 16px 8px;
   }}
@@ -213,7 +213,7 @@ _HTML_TEMPLATE = """\
       </table>
     </td></tr>
     <tr><td class="footer">
-      <p>Sent by GitHub Actions &middot; <a href="{url}">View in browser</a></p>
+      <p><a href="{url}">View in browser</a></p>
     </td></tr>
   </table>
 </div>
@@ -230,6 +230,14 @@ def render(md_path: str, html_path: str, run_url: str = "", date_str: str = "") 
         date_str = datetime.now().strftime("%Y-%m-%d")
 
     html = _HTML_TEMPLATE.format(body=body_html, date=date_str, url=run_url)
+
+    # CSS 인라인화: Naver Mail 등 <style>을 제거하는 클라이언트 대응
+    try:
+        from premailer import transform
+        html = transform(html)
+    except ImportError:
+        pass
+
     Path(html_path).write_text(html, encoding="utf-8")
     print(f"HTML email saved to {html_path}")
 

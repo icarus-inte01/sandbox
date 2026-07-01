@@ -87,7 +87,7 @@ jobs:
             World News Digest
             (${{ steps.run_script.outputs.exit_code == '0' && 'OK' || 'FAILED' }})
           to: ${{ secrets.EMAIL_TO }}
-          from: 박기영 <${{ secrets.MAIL_FROM }}>
+          from: 박기영
           html_body: ${{ steps.read_html.outputs.html_body }}
 
       - name: Upload artifacts
