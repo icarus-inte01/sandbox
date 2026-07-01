@@ -89,6 +89,8 @@ def render_report(
     title: str = "분양정보 유망도 리포트",
     include_notes: bool = True,
     land_listings: Optional[list[SaleListing]] = None,
+    kamco_listings: Optional[list[SaleListing]] = None,
+    lh_listings: Optional[list[SaleListing]] = None,
 ) -> str:
     """유망도 리포트 HTML을 렌더링합니다.
 
@@ -97,7 +99,9 @@ def render_report(
         report_date: 보고서 일자 문자열
         title: 제목
         include_notes: 면책 문구 포함 여부
-        land_listings: 토지/택지 분양 리스트 (분석 없이 별도 테이블)
+        land_listings: (deprecated) 토지/택지 분양 리스트
+        kamco_listings: 한국자산관리공사 공매 토지 리스트
+        lh_listings: LH 토지/택지 리스트
 
     Returns:
         렌더링된 HTML 문자열
@@ -166,22 +170,45 @@ def render_report(
         }
         scored_listings.append(d)
 
-    land_data = []
-    if land_listings:
-        for l in land_listings:
-            price_str = _krw_format(l.price) if l.price > 0 else "-"
-            announce_date = l.announcement_date if l.announcement_date else "-"
-            dtl_url = l.raw_data.get("dtl_url", "") if l.raw_data else ""
-            land_data.append({
-                "name": l.name,
-                "region": l.region,
-                "units": l.units,
-                "price_str": price_str,
-                "announce_date": announce_date,
-                "builder": l.builder or "-",
-                "supply_purpose": l.supply_purpose or "",
-                "dtl_url": dtl_url,
-            })
+    def _build_land_dict(l):
+        price_str = _krw_format(l.price) if l.price > 0 else "-"
+        announce_date = l.announcement_date if l.announcement_date else "-"
+        dtl_url = l.raw_data.get("dtl_url", "") if l.raw_data else ""
+        land_scores = l.raw_data.get("land_scores", {}) if l.raw_data else {}
+        total_score = l.total_score
+        score_color = _score_color(total_score)
+        discount_rate = l.discount_rate
+        return {
+            "name": l.name,
+            "region": l.region,
+            "units": l.units,
+            "price_str": price_str,
+            "announce_date": announce_date,
+            "builder": l.builder or "-",
+            "supply_purpose": l.supply_purpose or "",
+            "dtl_url": dtl_url,
+            "total_score": total_score,
+            "score_color": score_color,
+            "discount_rate": discount_rate,
+            "land_scores": land_scores,
+            "has_breakdown": bool(land_scores),
+        }
+
+    # 한국자산관리공사(onbid) — 점수순 top 30
+    kamco_sorted = sorted(
+        (kamco_listings or land_listings or []),
+        key=lambda l: (l.total_score if l.total_score is not None else -1, l.name),
+        reverse=True,
+    )[:30]
+    kamco_data = [_build_land_dict(l) for l in kamco_sorted]
+
+    # LH — 점수순 top 30
+    lh_sorted = sorted(
+        (lh_listings or []),
+        key=lambda l: (l.total_score if l.total_score is not None else -1, l.name),
+        reverse=True,
+    )[:30]
+    lh_data = [_build_land_dict(l) for l in lh_sorted]
 
     html = template.render(
         title=title,
@@ -189,6 +216,7 @@ def render_report(
         listings=scored_listings,
         total_count=len(scored_listings),
         include_notes=include_notes,
-        land_listings=land_data,
+        kamco_listings=kamco_data,
+        lh_listings=lh_data,
     )
     return html

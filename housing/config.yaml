@@ -1,14 +1,23 @@
 # 공공데이터포털 API 인증키 (GitHub Secrets에서 주입)
 api_keys:
   data_go_kr: "${DATA_GO_KR_API_KEY}"
+  vworld: "${VWORLD_API_KEY}"
 
-# 유망도 점수 가중치 (합계 = 1.0)
+# 유망도 점수 가중치 (합계 = 1.0) — 아파트 분양
 weights:
   discount_rate: 0.35   # 분양가 할인율 (분양가 vs 시세)
   transit_location: 0.30  # 교통/입지
   brand: 0.15           # 시공사 브랜드
   competition: 0.15     # 청약경쟁률
   scale: 0.05           # 공급규모 (세대수)
+
+# 토지(대지) 평가 가중치  (합계 = 1.0) — 온비드 공매 대지
+land_weights:
+  official_price_ratio: 0.30  # 공시지가 대비 입찰가 비율
+  discount_rate: 0.25         # 감정가 대비 할인율
+  location: 0.25              # 입지/위치
+  unsold_count: 0.10          # 유찰횟수
+  scale: 0.10                 # 면적 규모
 
 # API 호출 설정
 api:

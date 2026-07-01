@@ -306,32 +306,147 @@ table.units-table tbody tr:last-child td {
     </p>
     {% endif %}
 
-    {% if land_listings %}
-    <h3 style="margin:24px 0 4px 0;font-size:14px;color:#1a365d;">📋 토지/택지 분양</h3>
+    {% if lh_listings %}
+    <h3 style="margin:24px 0 4px 0;font-size:14px;color:#1a365d;">🏗 LH (한국토지주택공사) — 상위 30건</h3>
     <table>
       <thead>
         <tr>
+          <th style="width:28px;">순위</th>
           <th class="text-left">단지명</th>
           <th class="text-left">위치</th>
-          <th style="width:52px;">용도</th>
-          <th>공고일</th>
+          <th style="width:52px;">면적</th>
+          <th style="width:44px;">할인율</th>
+          <th style="width:38px;">점수</th>
         </tr>
       </thead>
       <tbody>
-        {% for item in land_listings %}
-        <tr>
+        {% for item in lh_listings %}
+        <tr class="{% if item.total_score and item.total_score >= 80 %}high-score{% elif item.total_score and item.total_score >= 60 %}mid-score{% endif %}">
+          <td>
+            <span class="rank-badge {% if loop.index == 1 %}rank-1{% elif loop.index == 2 %}rank-2{% elif loop.index == 3 %}rank-3{% else %}rank-other{% endif %}">
+              {{ loop.index }}
+            </span>
+          </td>
           <td class="text-left">
             {% if item.dtl_url %}
             <a href="{{ item.dtl_url }}" target="_blank" style="color:#1a365d;text-decoration:underline;">{{ item.name }}</a>
             {% else %}
             <strong>{{ item.name }}</strong>
             {% endif %}
-            <br><span style="font-size:10px;color:#6b7280;">{{ item.builder }}</span>
+            <br><span style="font-size:10px;color:#6b7280;">{% if item.builder and item.builder != '-' %}{{ item.builder }}{% endif %}</span>
           </td>
           <td class="text-left" style="font-size:11px;">{{ item.region }}</td>
-          <td style="font-size:11px;">{% if item.supply_purpose %}{{ item.supply_purpose }}{% else %}-{% endif %}</td>
-          <td style="font-size:11px;">{{ item.announce_date }}</td>
+          <td style="font-size:11px;">{% if item.units and item.units > 0 %}{{ "{:,}".format(item.units) }}m²{% else %}-{% endif %}</td>
+          <td>
+            {% if item.discount_rate is not none %}
+              {{ "%.1f"|format(item.discount_rate) }}%
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          <td class="score-cell" style="color:{{ item.score_color }};">
+            {% if item.total_score is not none %}
+              {{ "%.0f"|format(item.total_score) }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
         </tr>
+        {% if item.has_breakdown %}
+        <tr class="breakdown-row">
+          <td colspan="6" class="text-left">
+            <span style="color:#6b7280;font-size:10px;">세부점수:</span>
+            {% if item.land_scores.get('price_ratio') is not none %}
+            <span class="dim-badge" style="background:#2563eb;">공시지가 {{ "%.0f"|format(item.land_scores.price_ratio) }}</span>
+            {% endif %}
+            {% if item.land_scores.get('discount') is not none %}
+            <span class="dim-badge" style="background:#7c3aed;">할인율 {{ "%.0f"|format(item.land_scores.discount) }}</span>
+            {% endif %}
+            {% if item.land_scores.get('location') is not none %}
+            <span class="dim-badge" style="background:#0891b2;">입지 {{ "%.0f"|format(item.land_scores.location) }}</span>
+            {% endif %}
+            {% if item.land_scores.get('unsold') is not none %}
+            <span class="dim-badge" style="background:#d97706;">유찰 {{ "%.0f"|format(item.land_scores.unsold) }}</span>
+            {% endif %}
+            {% if item.land_scores.get('scale') is not none %}
+            <span class="dim-badge" style="background:#059669;">면적 {{ "%.0f"|format(item.land_scores.scale) }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {% if kamco_listings %}
+    <h3 style="margin:24px 0 4px 0;font-size:14px;color:#1a365d;">🏛 한국자산관리공사 (온비드 공매) — 상위 30건</h3>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:28px;">순위</th>
+          <th class="text-left">단지명</th>
+          <th class="text-left">위치</th>
+          <th style="width:52px;">면적</th>
+          <th style="width:44px;">할인율</th>
+          <th style="width:38px;">점수</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in kamco_listings %}
+        <tr class="{% if item.total_score and item.total_score >= 80 %}high-score{% elif item.total_score and item.total_score >= 60 %}mid-score{% endif %}">
+          <td>
+            <span class="rank-badge {% if loop.index == 1 %}rank-1{% elif loop.index == 2 %}rank-2{% elif loop.index == 3 %}rank-3{% else %}rank-other{% endif %}">
+              {{ loop.index }}
+            </span>
+          </td>
+          <td class="text-left">
+            {% if item.dtl_url %}
+            <a href="{{ item.dtl_url }}" target="_blank" style="color:#1a365d;text-decoration:underline;">{{ item.name }}</a>
+            {% else %}
+            <strong>{{ item.name }}</strong>
+            {% endif %}
+            <br><span style="font-size:10px;color:#6b7280;">{% if item.builder and item.builder != '-' %}{{ item.builder }}{% endif %}</span>
+          </td>
+          <td class="text-left" style="font-size:11px;">{{ item.region }}</td>
+          <td style="font-size:11px;">{% if item.units and item.units > 0 %}{{ "{:,}".format(item.units) }}m²{% else %}-{% endif %}</td>
+          <td>
+            {% if item.discount_rate is not none %}
+              {{ "%.1f"|format(item.discount_rate) }}%
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          <td class="score-cell" style="color:{{ item.score_color }};">
+            {% if item.total_score is not none %}
+              {{ "%.0f"|format(item.total_score) }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
+        </tr>
+        {% if item.has_breakdown %}
+        <tr class="breakdown-row">
+          <td colspan="6" class="text-left">
+            <span style="color:#6b7280;font-size:10px;">세부점수:</span>
+            {% if item.land_scores.get('price_ratio') is not none %}
+            <span class="dim-badge" style="background:#2563eb;">공시지가 {{ "%.0f"|format(item.land_scores.price_ratio) }}</span>
+            {% endif %}
+            {% if item.land_scores.get('discount') is not none %}
+            <span class="dim-badge" style="background:#7c3aed;">할인율 {{ "%.0f"|format(item.land_scores.discount) }}</span>
+            {% endif %}
+            {% if item.land_scores.get('location') is not none %}
+            <span class="dim-badge" style="background:#0891b2;">입지 {{ "%.0f"|format(item.land_scores.location) }}</span>
+            {% endif %}
+            {% if item.land_scores.get('unsold') is not none %}
+            <span class="dim-badge" style="background:#d97706;">유찰 {{ "%.0f"|format(item.land_scores.unsold) }}</span>
+            {% endif %}
+            {% if item.land_scores.get('scale') is not none %}
+            <span class="dim-badge" style="background:#059669;">면적 {{ "%.0f"|format(item.land_scores.scale) }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endif %}
         {% endfor %}
       </tbody>
     </table>

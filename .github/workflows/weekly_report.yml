@@ -2,8 +2,8 @@ name: 🏠 분양정보 유망도 리포트
 
 on:
   schedule:
-    # 매주 월요일 09:00 KST = UTC 00:00 Mon
-    - cron: '0 0 * * 1'
+    # 매주 월요일 아침 07:00 KST = 일요일 22:00 UTC
+    - cron: '0 22 * * 0'
   workflow_dispatch:
     # GitHub UI에서 수동 실행 가능
 
@@ -23,6 +23,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Check execution time
+        run: |
+          echo "✅ Workflow started"
+          echo "UTC: $(date -u '+%Y-%m-%d %H:%M:%S')"
+          echo "KST: $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M:%S')"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -44,6 +50,7 @@ jobs:
           ls -la output/report.html
         env:
           DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
+          VWORLD_API_KEY: ${{ secrets.VWORLD_API_KEY }}
 
       - name: Read HTML body
         id: read_html

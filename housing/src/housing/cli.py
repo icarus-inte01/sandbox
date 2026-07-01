@@ -11,7 +11,7 @@ import smtplib
 import sys
 from datetime import datetime
 from email.mime.text import MIMEText
-from typing import Any
+from typing import Any, Optional
 
 from src.housing.config import Config
 from src.housing.models import SaleListing, SupplyType, SaleStatus
@@ -23,6 +23,7 @@ COLLECTOR_MAP: dict[str, str] = {
     "cheongyak": "src.housing.collectors.cheongyak.CheongyakCollector",
     "lh": "src.housing.collectors.lh.LHCollector",
     "naver": "src.housing.collectors.naver.NaverCollector",
+    "onbid": "src.housing.collectors.onbid.OnbidCollector",
 }
 
 
@@ -34,11 +35,100 @@ def _import_collector(name: str):
     return getattr(module, class_name)()
 
 
+def _dedup_key(listing: SaleListing) -> str:
+    pnu = listing.raw_data.get("pnu") or ""
+    pnu = pnu.strip() if isinstance(pnu, str) else str(pnu).strip()
+    if pnu:
+        return f"pnu:{pnu}"
+    return f"name:{listing.name}|region:{listing.region}"
+
+
+def _parse_dt(ymdhm: str) -> Optional[datetime]:
+    """YYYYMMDDHHMM → datetime."""
+    if len(ymdhm) < 12:
+        return None
+    try:
+        return datetime(
+            int(ymdhm[0:4]), int(ymdhm[4:6]), int(ymdhm[6:8]),
+            int(ymdhm[8:10]), int(ymdhm[10:12]),
+        )
+    except (ValueError, IndexError):
+        return None
+
+
+def _pick_best_variant(group: list[SaleListing]) -> SaleListing:
+    """날짜 기반으로 현재 진행중인 회차를 우선 선택.
+
+    1순위: 현재 open (bid_start ≤ now ≤ bid_end)
+    2순위: 가장 가까운 예정 회차 (가장 이른 bid_start ≥ now)
+    3순위: 최저가
+    """
+    now = datetime.now()
+
+    open_variants: list[SaleListing] = []
+    future_variants: list[tuple[SaleListing, datetime]] = []
+
+    for listing in group:
+        bid_start = _parse_dt(listing.raw_data.get("bid_start_date", ""))
+        bid_end = _parse_dt(listing.raw_data.get("bid_end_date", ""))
+
+        if bid_start and bid_end and bid_start <= now <= bid_end:
+            open_variants.append(listing)
+        elif bid_start and bid_start > now:
+            future_variants.append((listing, bid_start))
+
+    if open_variants:
+        open_variants.sort(key=lambda l: (l.price or 0))
+        return open_variants[0]
+
+    if future_variants:
+        future_variants.sort(key=lambda x: x[1])
+        return future_variants[0][0]
+
+    group.sort(key=lambda l: (l.price or 0))
+    return group[0]
+
+
+def deduplicate_listings(listings: list[SaleListing]) -> list[SaleListing]:
+    groups: dict[str, list[SaleListing]] = {}
+    for listing in listings:
+        key = _dedup_key(listing)
+        groups.setdefault(key, []).append(listing)
+
+    result: list[SaleListing] = []
+    for key, group in groups.items():
+        best = _pick_best_variant(group)
+
+        if len(group) > 1:
+            prices = sorted({l.price for l in group if l.price})
+            if len(prices) > 1:
+                best.raw_data["price_range"] = {
+                    "min_price": prices[0],
+                    "max_price": prices[-1],
+                    "variants": len(group),
+                }
+                logger.debug(
+                    "Dedup %s: %d variants, price range %d~%d만원 → kept price=%d만원",
+                    key, len(group), prices[0], prices[-1], best.price,
+                )
+
+        result.append(best)
+
+    removed = len(listings) - len(result)
+    if removed:
+        logger.info(
+            "Dedup removed %d/%d listings (%d unique groups)",
+            removed, len(listings), len(result),
+        )
+    return result
+
+
 def cmd_collect(args: argparse.Namespace) -> list[SaleListing]:
     """데이터 수집 서브커맨드."""
     all_listings: list[SaleListing] = []
 
-    sources = ["cheongyak", "lh", "naver"] if args.source == "all" else [args.source]
+    src_name = getattr(args, "source", "all")
+    sources = ["cheongyak", "lh", "naver", "onbid"] if src_name == "all" else [src_name]
 
     for src in sources:
         try:
@@ -59,21 +149,45 @@ def cmd_collect(args: argparse.Namespace) -> list[SaleListing]:
 
 def cmd_analyze(args: argparse.Namespace, listings: list[SaleListing]) -> list[SaleListing]:
     """유망도 분석 서브커맨드."""
-    from src.housing.analyzer.scorer import calculate_scores_batch
-    from src.housing.analyzer.ranker import rank_listings
+    from src.housing.models import SupplyType
 
-    config = Config()
-    scored = calculate_scores_batch(listings, config)
-    ranked = rank_listings(scored)
+    if getattr(args, "land", False):
+        # 토지(대지) 전용 분석
+        from src.housing.analyzer.land_scorer import calculate_land_scores_batch
+        land_listings = [l for l in listings if l.supply_type == SupplyType.LAND]
+        if not land_listings:
+            logger.warning("No land listings found.")
+            return []
+        land_listings = deduplicate_listings(land_listings)
+        config = Config()
+        scored = calculate_land_scores_batch(land_listings, config)
+        from src.housing.analyzer.ranker import rank_listings
+        ranked = rank_listings(scored)
+        logger.info("Scored %d land listings", len(ranked))
 
-    logger.info("Scored %d listings", len(ranked))
+        if args.output == "table":
+            print(f"\n{'순위':>4s} {'물건명':<28s} {'지역':<18s} {'점수':>6s}  {'할인율':>6s} {'유찰':>4s} {'면적':>7s}")
+            print("-" * 82)
+            for i, l in enumerate(ranked, 1):
+                score = l.total_score or 0
+                dr = l.discount_rate or 0
+                usbd = l.raw_data.get("usbd_nft", "-")
+                area = l.units or "-"
+                print(f"{i:4d} {l.name:<28s} {l.region:<18s} {score:6.1f}  {dr:>5.1f}%  {str(usbd):>4s} {str(area):>7s}")
+    else:
+        from src.housing.analyzer.scorer import calculate_scores_batch
+        config = Config()
+        scored = calculate_scores_batch(listings, config)
+        from src.housing.analyzer.ranker import rank_listings
+        ranked = rank_listings(scored)
+        logger.info("Scored %d listings", len(ranked))
 
-    if args.output == "table":
-        print(f"\n{'순위':>4s} {'단지명':<24s} {'지역':<16s} {'점수':>6s}")
-        print("-" * 54)
-        for i, l in enumerate(ranked, 1):
-            score = l.total_score or 0
-            print(f"{i:4d} {l.name:<24s} {l.region:<16s} {score:6.1f}")
+        if args.output == "table":
+            print(f"\n{'순위':>4s} {'단지명':<24s} {'지역':<16s} {'점수':>6s}")
+            print("-" * 54)
+            for i, l in enumerate(ranked, 1):
+                score = l.total_score or 0
+                print(f"{i:4d} {l.name:<24s} {l.region:<16s} {score:6.1f}")
 
     return ranked
 
@@ -105,8 +219,9 @@ def cmd_all(args: argparse.Namespace) -> None:
         logger.warning("No listings collected. Skipping analysis & report.")
         return
 
-    # Step 1b: 분류 — 토지(주택건축가능용지) / 주택(진행중) / 주택(마감)
-    # 15058530 API 목록에는 공급용도 필드가 없으므로 공고명 키워드로도 필터링
+    # Step 1b: 분류 — 토지 / 주택(진행중) / 주택(마감)
+    # LH 토지(분양): 주택건축가능용지만 필터 (점포겸용/준주거/주상복합)
+    # 온비드 토지(공매): 전체 표시
     _RESIDENTIAL_LAND_USES = {
         "실수요자택지 점포겸용", "준주거용지", "주상복합(85㎡초과 등)",
     }
@@ -114,7 +229,8 @@ def cmd_all(args: argparse.Namespace) -> None:
     all_land = [l for l in all_listings if l.supply_type == SupplyType.LAND]
     land_listings = [
         l for l in all_land
-        if l.raw_data.get("공급용도", "") in _RESIDENTIAL_LAND_USES
+        if l.source == "onbid"
+        or l.raw_data.get("공급용도", "") in _RESIDENTIAL_LAND_USES
         or any(kw in l.name for kw in _RESIDENTIAL_KEYWORDS)
     ]
     housing_active = [
@@ -128,8 +244,23 @@ def cmd_all(args: argparse.Namespace) -> None:
         and l.status not in (SaleStatus.PLANNED, SaleStatus.OPEN)
     ]
 
-    logger.info("  → 주택(분양예정/청약중/미분양): %d개, 주택(마감): %d개, 토지: %d개",
+    land_listings = deduplicate_listings(land_listings)
+
+    logger.info("  → 주택(분양예정/청약중/미분양): %d개, 주택(마감): %d개, 토지(중복제거후): %d개",
                 len(housing_active), len(housing_closed), len(land_listings))
+
+    config = Config()
+
+    # 토지(대지) 스코어링
+    if land_listings:
+        from src.housing.analyzer.land_scorer import calculate_land_scores_batch
+        land_listings = calculate_land_scores_batch(land_listings, config)
+        logger.info("Scored %d land listings", len(land_listings))
+
+    # 한국자산관리공사(onbid)와 LH 분리
+    kamco_listings = [l for l in land_listings if l.source == "onbid"]
+    lh_listings = [l for l in land_listings if l.source == "lh"]
+    logger.info("  → KAMCO %d건, LH %d건", len(kamco_listings), len(lh_listings))
 
     if not housing_active:
         logger.warning("No active housing listings. Skipping analysis.")
@@ -138,7 +269,7 @@ def cmd_all(args: argparse.Namespace) -> None:
             return
         from src.housing.reporter.email_renderer import render_report
         report_date = datetime.now().strftime("%Y-%m-%d")
-        html = render_report([], report_date, land_listings=land_listings)
+        html = render_report([], report_date, kamco_listings=kamco_listings, lh_listings=lh_listings)
         _write_and_maybe_send(html, args)
         return
 
@@ -179,9 +310,6 @@ def cmd_all(args: argparse.Namespace) -> None:
             logger.info("  -> nearby prices for %s: avg=%d만원 (%d건)",
                        lawd_cd, prices["avg_price"], prices["trade_count"])
 
-    if all_nearby_prices:
-        logger.info("Collected nearby prices for %d regions", len(all_nearby_prices))
-
     # 3단계: 각 listing을 해당 법정동코드의 실거래가와 매칭 (㎡당 단가 기준)
     for listing in housing_active:
         lawd_cd = getattr(listing, "lawd_cd", "")
@@ -209,7 +337,6 @@ def cmd_all(args: argparse.Namespace) -> None:
     from src.housing.analyzer.scorer import calculate_scores_batch
     from src.housing.analyzer.ranker import rank_listings, top_n
 
-    config = Config()
     scored = calculate_scores_batch(housing_active, config)
     ranked = rank_listings(scored)
     top = top_n(ranked, n=20)
@@ -219,7 +346,7 @@ def cmd_all(args: argparse.Namespace) -> None:
     # Step 3: Report
     from src.housing.reporter.email_renderer import render_report
     report_date = datetime.now().strftime("%Y-%m-%d")
-    html = render_report(top, report_date, land_listings=land_listings)
+    html = render_report(top, report_date, kamco_listings=kamco_listings, lh_listings=lh_listings)
 
     _write_and_maybe_send(html, args)
 
@@ -310,6 +437,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_analyze.add_argument(
         "--output", choices=["json", "table"], default="table",
         help="출력 형식 (기본: table)"
+    )
+    p_analyze.add_argument(
+        "--land", action="store_true",
+        help="토지(대지) 평가 모드 — 온비드 공매 대지 전용 스코어 사용"
     )
 
     # report

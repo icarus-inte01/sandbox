@@ -66,6 +66,10 @@ class Config:
         return self.api_keys.get("data_go_kr", "")
 
     @property
+    def vworld_api_key(self) -> str:
+        return self.api_keys.get("vworld", "")
+
+    @property
     def weights(self) -> dict[str, float]:
         return self._config.get("weights", {})
 
