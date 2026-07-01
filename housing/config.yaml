@@ -21,7 +21,7 @@ land_weights:
 
 # API 호출 설정
 api:
-  request_delay: 0.5     # 요청 간 지연(초)
+  request_delay: 0.1     # 요청 간 지연(초)
   max_retries: 3
   timeout: 30            # 타임아웃(초)
   per_page: 100          # 페이지당 건수

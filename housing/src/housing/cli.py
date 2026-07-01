@@ -304,7 +304,7 @@ def cmd_all(args: argparse.Namespace) -> None:
     # 2단계: 수집된 모든 법정동코드에 대해 실거래가 조회
     all_nearby_prices: dict[str, dict[str, Any]] = {}
     for lawd_cd in sorted(listing_lawd_cds):
-        prices = molit_collector.get_nearby_prices(lawd_cd, months_back=3, mock=mock_mode)
+        prices = molit_collector.get_nearby_prices(lawd_cd, months_back=1, mock=mock_mode)
         all_nearby_prices[lawd_cd] = prices
         if prices.get("trade_count", 0) > 0:
             logger.info("  -> nearby prices for %s: avg=%d만원 (%d건)",
