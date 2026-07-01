@@ -219,4 +219,12 @@ def render_report(
         kamco_listings=kamco_data,
         lh_listings=lh_data,
     )
+
+    # CSS 인라인화: Naver 메일 등 <style>을 제거하는 클라이언트 대응
+    try:
+        from premailer import transform
+        html = transform(html)
+    except ImportError:
+        logger.warning("premailer not installed — skipping CSS inlining")
+
     return html
