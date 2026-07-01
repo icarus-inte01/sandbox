@@ -36,7 +36,7 @@ def main() -> None:
     ctx = ssl.create_default_context()
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx) as server:
         server.login(user, password)
-        server.sendmail(args.from_addr, args.to, msg.as_string())
+        server.sendmail(user, args.to, msg.as_string())
 
     print(f"Email sent to {args.to}")
 
