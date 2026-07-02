@@ -341,7 +341,7 @@ graph TB
     end
 
     subgraph Total["종합 점수"]
-        TOTAL[total_score =<br/>Σ(각 항목 점수 × 가중치)]
+        TOTAL["total_score =<br/>Σ(각 항목 점수 × 가중치)"]
     end
 
     DR --> TOTAL
@@ -476,7 +476,7 @@ graph TB
 
 ```mermaid
 graph TB
-    subgraph Land Inputs["토지 평가 입력"]
+    subgraph LandInputs["토지 평가 입력"]
         PRICE["price (만원) → min_bid_price_won"]
         APPRAISAL["raw_data.appraisal_value<br/>감정평가액"]
         PNU["raw_data.pnu<br/>19자리"]
@@ -485,7 +485,7 @@ graph TB
         REG["region<br/>지역명"]
     end
 
-    subgraph Land Weights["토지 가중치"]
+    subgraph LandWeights["토지 가중치"]
         LW1["official_price_ratio: 0.30"]
         LW2["discount_rate: 0.25"]
         LW3["location: 0.25"]
@@ -493,7 +493,7 @@ graph TB
         LW5["scale: 0.10"]
     end
 
-    subgraph Price Fetch["공시지가 조회 (vworld.kr)"]
+    subgraph PriceFetch["공시지가 조회 (vworld.kr)"]
         API["getIndvdLandPriceAttr<br/>API 직접 조회"]
         RECON["PNU 재구성 → 재조회<br/>(본번/부번=0000 보정)"]
         ESTIMATE["감정가 × 0.7 / 면적<br/>추정"]
@@ -722,7 +722,7 @@ classDiagram
 
     SaleListing --> SupplyType
     SaleListing --> SaleStatus
-    SaleListing "1" --> "*" units_info : dict (주택형별)
+    SaleListing "1" --> "*" units_info : 주택형별 상세 정보
 ```
 
 **필드 설명**:
