@@ -73,17 +73,22 @@ class CheongyakCollector(BaseCollector):
 
         try:
             now = datetime.now()
-            cutoff = (now - timedelta(days=365)).strftime("%Y-%m-%d")
 
             params = {"page": 1, "perPage": 100}
-            # 365일 이내 공고를 가져와서 상태 분류:
-            #   0-30일 → OPEN, 31-364일 → CLOSED, 365일+키워드매칭 → UNSOLD
-            # 이전 90일 컷오프는 UNSOLD(잔여/미분양/취소분)를 API 단에서 차단하여 누락시킴
-            params["cond[RCRIT_PBLANC_DE::GTE]"] = cutoff
+            # cond[RCRIT_PBLANC_DE::GTE] 필터는 이 API에서 미지원 (totalCount=0)
+            # → 전체 데이터를 받아서 Python 단에서 날짜 필터링
+            # PublicDataReader 라이브러리도 동일 방식 사용
             if region:
                 params["cond[SUBSCRPT_AREA_CODE_NM::EQ]"] = region
 
             detail_items = self.client.fetch_all(API_LIST, params, max_pages=5)
+
+            # Python 단에서 최근 90일 이내 공고만 유지
+            _cutoff_date = (now - timedelta(days=90)).strftime("%Y-%m-%d")
+            detail_items = [
+                item for item in detail_items
+                if (item.get("RCRIT_PBLANC_DE") or "") >= _cutoff_date
+            ]
 
             # detail Items의 house_manage_no만 model에서 조회
             target_keys = {item.get("HOUSE_MANAGE_NO", "") for item in detail_items if item.get("HOUSE_MANAGE_NO")}
