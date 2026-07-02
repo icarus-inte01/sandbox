@@ -73,10 +73,12 @@ class CheongyakCollector(BaseCollector):
 
         try:
             now = datetime.now()
-            cutoff = (now - timedelta(days=90)).strftime("%Y-%m-%d")
+            cutoff = (now - timedelta(days=365)).strftime("%Y-%m-%d")
 
             params = {"page": 1, "perPage": 100}
-            # CLOSED(공고일 90일 초과)는 API 단에서 제외 (UNSOLD는 이름 키워드로 분류)
+            # 365일 이내 공고를 가져와서 상태 분류:
+            #   0-30일 → OPEN, 31-364일 → CLOSED, 365일+키워드매칭 → UNSOLD
+            # 이전 90일 컷오프는 UNSOLD(잔여/미분양/취소분)를 API 단에서 차단하여 누락시킴
             params["cond[RCRIT_PBLANC_DE::GTE]"] = cutoff
             if region:
                 params["cond[SUBSCRPT_AREA_CODE_NM::EQ]"] = region
@@ -231,6 +233,70 @@ class CheongyakCollector(BaseCollector):
                     {"model_no": "2", "house_type": "전용 84", "supply_area": "84.0", "price": 35000, "households": 180},
                 ],
             },
+            # UNSOLD 시나리오: 잔여세대 (예: 군산 세경아파트)
+            {
+                "pblanc_no": "2025004001",
+                "house_nm": "군산 세경아파트 우선분양전환 후 잔여세대",
+                "suply_location": "전라북도 군산시",
+                "rcrit_pblanc_de": "2025-04-15",
+                "total_suply_hs_shl": 120,
+                "suply_amount": 18000,
+                "builder": "세경종합건설",
+                "region_code": "45",
+                "pblanc_knd": "아파트",
+                "units_info": [
+                    {"model_no": "1", "house_type": "전용 59", "supply_area": "59.0", "price": 16500, "households": 70},
+                    {"model_no": "2", "house_type": "전용 84", "supply_area": "84.0", "price": 19500, "households": 50},
+                ],
+            },
+            # UNSOLD 시나리오: 조합원 취소분 (예: 상무 양우내안에 퍼스트힐)
+            {
+                "pblanc_no": "2025002003",
+                "house_nm": "상무 양우내안에 퍼스트힐(조합원 취소분)",
+                "suply_location": "광주광역시 서구",
+                "rcrit_pblanc_de": "2025-03-01",
+                "total_suply_hs_shl": 85,
+                "suply_amount": 28000,
+                "builder": "양우건설",
+                "region_code": "50",
+                "pblanc_knd": "아파트",
+                "units_info": [
+                    {"model_no": "1", "house_type": "전용 59", "supply_area": "59.0", "price": 25500, "households": 50},
+                    {"model_no": "2", "house_type": "전용 84", "supply_area": "84.0", "price": 31000, "households": 35},
+                ],
+            },
+            # UNSOLD 시나리오: 보류지 (예: 북서울자이 폴라리스)
+            {
+                "pblanc_no": "2025003010",
+                "house_nm": "북서울자이 폴라리스(보류지)",
+                "suply_location": "서울특별시 노원구",
+                "rcrit_pblanc_de": "2025-05-20",
+                "total_suply_hs_shl": 45,
+                "suply_amount": 52000,
+                "builder": "GS건설",
+                "region_code": "11",
+                "pblanc_knd": "아파트",
+                "units_info": [
+                    {"model_no": "1", "house_type": "전용 59", "supply_area": "59.0", "price": 48000, "households": 25},
+                    {"model_no": "2", "house_type": "전용 84", "supply_area": "84.0", "price": 55000, "households": 20},
+                ],
+            },
+            # UNSOLD 시나리오: 본청약/공공분양 (예: 역곡지구 하우스토리 신혼희망타운)
+            {
+                "pblanc_no": "2025001022",
+                "house_nm": "역곡지구 하우스토리(부천역곡지구 A-2BL) 신혼희망타운(공공분양)(본청약)",
+                "suply_location": "경기도 부천시",
+                "rcrit_pblanc_de": "2025-02-10",
+                "total_suply_hs_shl": 320,
+                "suply_amount": 35000,
+                "builder": "한국토지주택공사",
+                "region_code": "41",
+                "pblanc_knd": "공공분양",
+                "units_info": [
+                    {"model_no": "1", "house_type": "전용 51", "supply_area": "51.0", "price": 28000, "households": 160},
+                    {"model_no": "2", "house_type": "전용 59", "supply_area": "59.0", "price": 32000, "households": 160},
+                ],
+            },
         ]
 
         if region:
@@ -317,7 +383,7 @@ class CheongyakCollector(BaseCollector):
         elif days_diff < 365:
             return SaleStatus.CLOSED
         else:
-            unsold_keywords = ["미분양", "잔여", "무순위", "취소후"]
+            unsold_keywords = ["미분양", "잔여", "무순위", "취소", "보류지"]
             if any(kw in name for kw in unsold_keywords):
                 return SaleStatus.UNSOLD
             return SaleStatus.CLOSED
