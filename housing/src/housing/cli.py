@@ -304,11 +304,63 @@ def cmd_all(args: argparse.Namespace) -> None:
     # 2단계: 수집된 모든 법정동코드에 대해 실거래가 조회
     all_nearby_prices: dict[str, dict[str, Any]] = {}
     for lawd_cd in sorted(listing_lawd_cds):
-        prices = molit_collector.get_nearby_prices(lawd_cd, months_back=1, mock=mock_mode)
+        prices = molit_collector.get_nearby_prices(lawd_cd, months_back=3, mock=mock_mode)
         all_nearby_prices[lawd_cd] = prices
-        if prices.get("trade_count", 0) > 0:
+        tc = prices.get("trade_count", 0)
+        if tc > 0:
             logger.info("  -> nearby prices for %s: avg=%d만원 (%d건)",
-                       lawd_cd, prices["avg_price"], prices["trade_count"])
+                       lawd_cd, prices["avg_price"], tc)
+        else:
+            logger.warning("  -> nearby prices for %s: 0건 (months_back=1)", lawd_cd)
+
+    LAWD_PREFIX_TO_DO: dict[str, str] = {
+        "11": "서울특별시", "26": "부산광역시", "27": "대구광역시",
+        "28": "인천광역시", "29": "광주광역시", "30": "대전광역시",
+        "31": "울산광역시", "36": "세종특별자치시", "41": "경기도",
+        "42": "강원특별자치도", "43": "충청북도", "44": "충청남도",
+        "45": "전북특별자치도", "46": "전라남도", "47": "경상북도",
+        "48": "경상남도", "50": "제주특별자치도",
+    }
+    sido_pool: dict[str, list[dict[str, Any]]] = {}
+    for lawd_cd, prices in all_nearby_prices.items():
+        if prices.get("trade_count", 0) > 0:
+            sido_key = LAWD_PREFIX_TO_DO.get(lawd_cd[:2], "기타")
+            sido_pool.setdefault(sido_key, []).append(prices)
+
+    sido_fallback: dict[str, dict[str, Any]] = {}
+    for sido_name, price_list in sido_pool.items():
+        total_price = 0
+        total_area_price = 0
+        total_trades = 0
+        for p in price_list:
+            total_price += p.get("avg_price", 0) * p.get("trade_count", 0)
+            total_area_price += p.get("avg_price_per_area", 0) * p.get("trade_count", 0)
+            total_trades += p.get("trade_count", 0)
+        if total_trades > 0:
+            sido_fallback[sido_name] = {
+                "avg_price": total_price / total_trades,
+                "avg_price_per_area": total_area_price / total_trades,
+                "trade_count": total_trades,
+            }
+
+    def _apply_market_price(listing: Any, price_data: dict[str, Any]) -> None:
+        avg_price_per_area = price_data.get("avg_price_per_area", 0)
+        if avg_price_per_area <= 0:
+            logger.debug("  [skip] %s: avg_price_per_area=0", listing.name)
+            return
+        listing.market_price = int(price_data.get("avg_price", 0))
+        listing.market_price_per_m2 = avg_price_per_area
+        supply_prices_per_m2 = [
+            u["price_per_m2"] for u in listing.units_info
+            if u.get("price_per_m2", 0) > 0
+        ]
+        if supply_prices_per_m2:
+            listing.supply_price_per_m2 = min(supply_prices_per_m2)
+            rate = calculate_discount_rate_per_area(
+                listing.supply_price_per_m2, avg_price_per_area
+            )
+            if rate is not None:
+                listing.discount_rate = rate
 
     # 3단계: 각 listing을 해당 법정동코드의 실거래가와 매칭 (㎡당 단가 기준)
     for listing in housing_active:
@@ -316,22 +368,20 @@ def cmd_all(args: argparse.Namespace) -> None:
         if lawd_cd and lawd_cd in all_nearby_prices:
             nearby = all_nearby_prices[lawd_cd]
             if nearby.get("trade_count", 0) > 0:
-                avg_price_per_area = nearby.get("avg_price_per_area", 0)
-                if avg_price_per_area > 0:
-                    listing.market_price = int(nearby.get("avg_price", 0))
-                    listing.market_price_per_m2 = avg_price_per_area
-                    # 대표 공급면적당 분양가 = units_info 중 최소 price_per_m2
-                    supply_prices_per_m2 = [
-                        u["price_per_m2"] for u in listing.units_info
-                        if u.get("price_per_m2", 0) > 0
-                    ]
-                    if supply_prices_per_m2:
-                        listing.supply_price_per_m2 = min(supply_prices_per_m2)
-                        rate = calculate_discount_rate_per_area(
-                            listing.supply_price_per_m2, avg_price_per_area
-                        )
-                        if rate is not None:
-                            listing.discount_rate = rate
+                _apply_market_price(listing, nearby)
+            else:
+                sido_key = LAWD_PREFIX_TO_DO.get(lawd_cd[:2], "")
+                if sido_key in sido_fallback:
+                    logger.info("  [fallback] %s (lawd=%s): 시/도 평균(%s) 사용 (%d건)",
+                                listing.name, lawd_cd, sido_key,
+                                sido_fallback[sido_key]["trade_count"])
+                    _apply_market_price(listing, sido_fallback[sido_key])
+                else:
+                    logger.warning("  [skip] %s (lawd=%s): trade_count=0, fallback 없음",
+                                   listing.name, lawd_cd)
+        else:
+            logger.warning("  [skip] %s: lawd_cd 없음 (region=%s, code=%s)",
+                          listing.name, listing.region, listing.region_code)
 
     # Step 2: Analyze (housing only)
     from src.housing.analyzer.scorer import calculate_scores_batch
