@@ -311,7 +311,7 @@ def cmd_all(args: argparse.Namespace) -> None:
             logger.info("  -> nearby prices for %s: avg=%d만원 (%d건)",
                        lawd_cd, prices["avg_price"], tc)
         else:
-            logger.warning("  -> nearby prices for %s: 0건 (months_back=1)", lawd_cd)
+            logger.warning("  -> nearby prices for %s: 0건 (months_back=3)", lawd_cd)
 
     LAWD_PREFIX_TO_DO: dict[str, str] = {
         "11": "서울특별시", "26": "부산광역시", "27": "대구광역시",
