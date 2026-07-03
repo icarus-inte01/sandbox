@@ -161,12 +161,6 @@ def render_report(
             "scale_score": listing.scale_score,
             "avg_price_per_pyung": round(avg_price_per_pyung / avg_weight) if avg_weight > 0 else 0,
             "units_table": units_table,
-            "has_breakdown": any([
-                listing.transit_score is not None,
-                listing.brand_score is not None,
-                listing.competition_score is not None,
-                listing.scale_score is not None,
-            ]),
         }
         scored_listings.append(d)
 
@@ -191,7 +185,6 @@ def render_report(
             "score_color": score_color,
             "discount_rate": discount_rate,
             "land_scores": land_scores,
-            "has_breakdown": bool(land_scores),
         }
 
     # 한국자산관리공사(onbid) — 점수순 top 30

@@ -73,12 +73,6 @@ tbody tr.high-score {
 tbody tr.mid-score {
   background-color: #fefce8;
 }
-/* score breakdown sub-row */
-tr.breakdown-row td {
-  padding: 6px 8px;
-  border-bottom: 1px solid #d1d5db;
-  background-color: #fafafa;
-}
 tr.sub-table-row td {
   padding: 0;
   border-bottom: 1px solid #d1d5db;
@@ -278,28 +272,12 @@ table.units-table tbody tr:last-child td {
           </td>
         </tr>
         {% endif %}
-        {% if item.has_breakdown %}
-        <tr class="breakdown-row">
-          <td colspan="9" class="text-left">
-            <span style="color:#6b7280;font-size:10px;">세부점수:</span>
-            {% if item.transit_score is not none %}
-            <span class="dim-badge" style="background:#2563eb;">교통/입지 {{ "%.0f"|format(item.transit_score) }}</span>
-            {% endif %}
-            {% if item.brand_score is not none %}
-            <span class="dim-badge" style="background:#7c3aed;">브랜드 {{ "%.0f"|format(item.brand_score) }}</span>
-            {% endif %}
-            {% if item.competition_score is not none %}
-            <span class="dim-badge" style="background:#0891b2;">경쟁률 {{ "%.0f"|format(item.competition_score) }}</span>
-            {% endif %}
-            {% if item.scale_score is not none %}
-            <span class="dim-badge" style="background:#059669;">규모 {{ "%.0f"|format(item.scale_score) }}</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endif %}
         {% endfor %}
       </tbody>
     </table>
+    <div style="margin:-8px 0 8px 0;padding:6px 10px;background:#f9fafb;border-radius:4px;font-size:11px;color:#6b7280;">
+      평가기준: 할인율(35%) + 교통입지(30%) + 브랜드(15%) + 경쟁률(15%) + 규모(5%)
+    </div>
     {% else %}
     <p style="text-align:center;padding:40px 0;color:#9ca3af;font-size:15px;">
       현재 청약가능한 주택 분양정보가 없습니다.
@@ -352,31 +330,12 @@ table.units-table tbody tr:last-child td {
             {% endif %}
           </td>
         </tr>
-        {% if item.has_breakdown %}
-        <tr class="breakdown-row">
-          <td colspan="6" class="text-left">
-            <span style="color:#6b7280;font-size:10px;">세부점수:</span>
-            {% if item.land_scores.get('price_ratio') is not none %}
-            <span class="dim-badge" style="background:#2563eb;">공시지가 {{ "%.0f"|format(item.land_scores.price_ratio) }}</span>
-            {% endif %}
-            {% if item.land_scores.get('discount') is not none %}
-            <span class="dim-badge" style="background:#7c3aed;">할인율 {{ "%.0f"|format(item.land_scores.discount) }}</span>
-            {% endif %}
-            {% if item.land_scores.get('location') is not none %}
-            <span class="dim-badge" style="background:#0891b2;">입지 {{ "%.0f"|format(item.land_scores.location) }}</span>
-            {% endif %}
-            {% if item.land_scores.get('unsold') is not none %}
-            <span class="dim-badge" style="background:#d97706;">유찰 {{ "%.0f"|format(item.land_scores.unsold) }}</span>
-            {% endif %}
-            {% if item.land_scores.get('scale') is not none %}
-            <span class="dim-badge" style="background:#059669;">면적 {{ "%.0f"|format(item.land_scores.scale) }}</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endif %}
         {% endfor %}
       </tbody>
     </table>
+    <div style="margin:-8px 0 8px 0;padding:6px 10px;background:#f9fafb;border-radius:4px;font-size:11px;color:#6b7280;">
+      평가기준: 공시지가(30%) + 할인율(30%) + 입지(20%) + 유찰(15%) + 면적(5%)
+    </div>
     {% endif %}
 
     {% if kamco_listings %}
@@ -425,31 +384,12 @@ table.units-table tbody tr:last-child td {
             {% endif %}
           </td>
         </tr>
-        {% if item.has_breakdown %}
-        <tr class="breakdown-row">
-          <td colspan="6" class="text-left">
-            <span style="color:#6b7280;font-size:10px;">세부점수:</span>
-            {% if item.land_scores.get('price_ratio') is not none %}
-            <span class="dim-badge" style="background:#2563eb;">공시지가 {{ "%.0f"|format(item.land_scores.price_ratio) }}</span>
-            {% endif %}
-            {% if item.land_scores.get('discount') is not none %}
-            <span class="dim-badge" style="background:#7c3aed;">할인율 {{ "%.0f"|format(item.land_scores.discount) }}</span>
-            {% endif %}
-            {% if item.land_scores.get('location') is not none %}
-            <span class="dim-badge" style="background:#0891b2;">입지 {{ "%.0f"|format(item.land_scores.location) }}</span>
-            {% endif %}
-            {% if item.land_scores.get('unsold') is not none %}
-            <span class="dim-badge" style="background:#d97706;">유찰 {{ "%.0f"|format(item.land_scores.unsold) }}</span>
-            {% endif %}
-            {% if item.land_scores.get('scale') is not none %}
-            <span class="dim-badge" style="background:#059669;">면적 {{ "%.0f"|format(item.land_scores.scale) }}</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endif %}
         {% endfor %}
       </tbody>
     </table>
+    <div style="margin:-8px 0 8px 0;padding:6px 10px;background:#f9fafb;border-radius:4px;font-size:11px;color:#6b7280;">
+      평가기준: 공시지가(30%) + 할인율(30%) + 입지(20%) + 유찰(15%) + 면적(5%)
+    </div>
     {% endif %}
 
     <!-- FOOTER NOTES -->
