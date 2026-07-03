@@ -321,6 +321,31 @@ def cmd_all(args: argparse.Namespace) -> None:
         "45": "전북특별자치도", "46": "전라남도", "47": "경상북도",
         "48": "경상남도", "50": "제주특별자치도",
     }
+    SIDO_PROBE_LAWD: dict[str, str] = {
+        "인천광역시": "28200",
+        "광주광역시": "29110",
+        "전북특별자치도": "45113",
+        "전라남도": "46150",
+    }
+    sido_touched: set[str] = set()
+    for lawd_cd in listing_lawd_cds:
+        sido_key = LAWD_PREFIX_TO_DO.get(lawd_cd[:2], "")
+        if sido_key:
+            sido_touched.add(sido_key)
+    sido_with_data: set[str] = set()
+    for lawd_cd, prices in all_nearby_prices.items():
+        if prices.get("trade_count", 0) > 0:
+            sido_with_data.add(LAWD_PREFIX_TO_DO.get(lawd_cd[:2], ""))
+    for sido_name in sorted(sido_touched - sido_with_data):
+        probe_lawd = SIDO_PROBE_LAWD.get(sido_name)
+        if probe_lawd:
+            logger.info("  [probe] %s: 대표 법정동(%s) fallback pool 조회", sido_name, probe_lawd)
+            probe_prices = molit_collector.get_nearby_prices(probe_lawd, months_back=3, mock=mock_mode)
+            if probe_prices.get("trade_count", 0) > 0:
+                all_nearby_prices[probe_lawd] = probe_prices
+                logger.info("    -> %s: avg=%d만원 (%d건)", probe_lawd,
+                           probe_prices["avg_price"], probe_prices["trade_count"])
+
     sido_pool: dict[str, list[dict[str, Any]]] = {}
     for lawd_cd, prices in all_nearby_prices.items():
         if prices.get("trade_count", 0) > 0:
