@@ -88,7 +88,7 @@ categories:
 
 ## GitHub Actions
 
-[`.github/workflows/tour_report.yml`](.github/workflows/tour_report.yml) — workflow_dispatch로 실행:
+[`.github/workflows/tour_report.yml`](../.github/workflows/tour_report.yml) (저장소 루트) — workflow_dispatch로 실행:
 
 1. Repository의 **Actions** 탭 → **🗺️ 여행코스 리포트** 선택
 2. **Run workflow** → 지역/날짜/이메일 입력
@@ -132,6 +132,5 @@ tour/
 │           └── templates/
 │               └── report.html.j2  # 이메일 호환 템플릿
 ├── tests/                     # 38개 pytest
-└── .github/workflows/
-    └── tour_report.yml        # GitHub Actions workflow
+└── (workflow는 저장소 루트 .github/workflows/tour_report.yml)
 ```
