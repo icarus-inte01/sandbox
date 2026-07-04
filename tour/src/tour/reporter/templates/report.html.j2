@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ region }} 여행정보 리포트 ({{ date }})</title>
+<style type="text/css">
+/*! 이메일 클라이언트 호환 스타일 (인라인 CSS) */
+body, table, td, p, a, li, blockquote {
+  -webkit-text-size-adjust: 100%;
+  -ms-text-size-adjust: 100%;
+}
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, 'Malgun Gothic', 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #333333;
+  background-color: #f5f5f5;
+}
+.wrapper {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 20px 10px;
+}
+.container {
+  background-color: #ffffff;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #ffffff;
+  padding: 30px 24px;
+  text-align: center;
+}
+.header h1 {
+  margin: 0 0 8px 0;
+  font-size: 24px;
+  font-weight: 700;
+}
+.header p {
+  margin: 0;
+  font-size: 14px;
+  opacity: 0.9;
+}
+.header .meta {
+  margin-top: 12px;
+  font-size: 12px;
+  opacity: 0.8;
+}
+.section {
+  padding: 20px 24px;
+  border-bottom: 1px solid #eeeeee;
+}
+.section:last-child {
+  border-bottom: none;
+}
+.section-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #333333;
+  margin: 0 0 16px 0;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #667eea;
+}
+.card {
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
+  background-color: #fafafa;
+}
+.card:last-child {
+  margin-bottom: 0;
+}
+.card .rank {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  line-height: 22px;
+  text-align: center;
+  background-color: #667eea;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+.card .card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #222222;
+  margin: 0 0 4px 0;
+}
+.card .card-meta {
+  font-size: 12px;
+  color: #888888;
+  margin: 2px 0;
+}
+.card .card-desc {
+  font-size: 12px;
+  color: #666666;
+  margin: 6px 0 0 0;
+  line-height: 1.5;
+}
+.card img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin-top: 8px;
+}
+.no-items {
+  color: #999999;
+  font-size: 13px;
+  font-style: italic;
+}
+.footer {
+  text-align: center;
+  padding: 16px 24px;
+  font-size: 11px;
+  color: #aaaaaa;
+  border-top: 1px solid #eeeeee;
+}
+.footer a {
+  color: #667eea;
+  text-decoration: none;
+}
+@media only screen and (max-width: 480px) {
+  .header { padding: 20px 16px; }
+  .header h1 { font-size: 20px; }
+  .section { padding: 16px; }
+  .card { padding: 10px; }
+}
+</style>
+</head>
+<body>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f5f5;">
+<tr>
+<td align="center" style="padding:20px 10px;">
+<table role="presentation" width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;">
+<tr>
+<td style="background-color:#ffffff;border-radius:8px;overflow:hidden;">
+
+<!-- HEADER -->
+<div class="header" style="background:linear-gradient(135deg,#667eea,#764ba2);color:#ffffff;padding:30px 24px;text-align:center;">
+  <h1 style="margin:0 0 8px 0;font-size:24px;font-weight:700;">🗺️ {{ region }} 여행정보 리포트</h1>
+  <p style="margin:0;font-size:14px;opacity:0.9;">{{ date }}</p>
+  <div class="meta" style="margin-top:12px;font-size:12px;opacity:0.8;">
+    생성일시: {{ generated_at[:10] }} {{ generated_at[11:19] }}
+  </div>
+</div>
+
+<!-- CATEGORIES -->
+{% for category in categories %}
+<div class="section" style="padding:20px 24px;border-bottom:1px solid #eeeeee;">
+  <h2 class="section-title" style="font-size:18px;font-weight:700;color:#333333;margin:0 0 16px 0;padding-bottom:8px;border-bottom:2px solid #667eea;">
+    {{ category.name }}
+  </h2>
+
+  {% if category['items'] %}
+    {% for item in category['items'] %}
+    <div class="card" style="padding:12px;margin-bottom:12px;border:1px solid #e8e8e8;border-radius:6px;background-color:#fafafa;">
+      <div style="display:flex;align-items:flex-start;">
+        <div style="flex-shrink:0;margin-right:10px;">
+          {% if item.first_image %}
+          <img src="{{ item.first_image }}" alt="{{ item.title }}" style="width:80px;height:80px;object-fit:cover;border-radius:4px;">
+          {% endif %}
+        </div>
+        <div style="flex:1;">
+          <h3 class="card-title" style="font-size:15px;font-weight:600;color:#222222;margin:0 0 4px 0;">
+            {{ loop.index }}.
+            {% if item.title %}
+            <a href="https://map.naver.com/v5/search/{{ item.title | urlencode }}?lng={{ item.map_x }}&lat={{ item.map_y }}" target="_blank" style="color:#222222;text-decoration:none;" title="네이버 지도에서 보기">{{ item.title }}</a>
+            {% else %}
+            {{ item.title }}
+            {% endif %}
+          </h3>
+          {% if item.full_address %}
+          <p class="card-meta" style="font-size:12px;color:#888888;margin:2px 0;">📍 {{ item.full_address }}</p>
+          {% endif %}
+          {% if item.tel %}
+          <p class="card-meta" style="font-size:12px;color:#888888;margin:2px 0;">📞 {{ item.tel }}</p>
+          {% endif %}
+          {% if item.short_overview %}
+          <p class="card-desc" style="font-size:12px;color:#666666;margin:6px 0 0 0;line-height:1.5;">
+            {{ item.short_overview }}
+          </p>
+          {% endif %}
+
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="no-items" style="color:#999999;font-size:13px;font-style:italic;">해당 카테고리에 데이터가 없습니다.</p>
+  {% endif %}
+</div>
+{% endfor %}
+
+<!-- FOOTER -->
+<div class="footer" style="text-align:center;padding:16px 24px;font-size:11px;color:#aaaaaa;border-top:1px solid #eeeeee;">
+  <p style="margin:0;">데이터 출처: 한국관광공사 TourAPI &copy; {{ year }}</p>
+  <p style="margin:4px 0 0 0;">본 메일은 자동 생성되었습니다.</p>
+</div>
+
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</body>
+</html>

@@ -1,0 +1,97 @@
+name: 🗺️ 여행코스 리포트
+
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: '여행 지역'
+        required: true
+        type: string
+        default: '서울'
+      date:
+        description: '여행 예정일 (YYYY-MM-DD)'
+        required: true
+        type: string
+        default: ''
+      emails:
+        description: '수신 이메일 (쉼표 구분, 미입력시 EMAIL_TO 사용)'
+        required: false
+        type: string
+        default: ''
+
+env:
+  PYTHON_VERSION: '3.12'
+  WORKING_DIR: tour
+
+jobs:
+  generate-and-send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check execution time
+        run: |
+          echo "✅ Workflow started"
+          echo "UTC: $(date -u '+%Y-%m-%d %H:%M:%S')"
+          echo "KST: $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M:%S')"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: ${{ env.WORKING_DIR }}/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Generate tour report
+        id: run_report
+        run: |
+          python main.py \
+            --region "${{ inputs.region }}" \
+            --date "${{ inputs.date }}" \
+            --output output/report.html
+          echo "report_path=output/report.html" >> $GITHUB_OUTPUT
+          ls -la output/report.html
+        env:
+          DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
+
+      - name: Determine recipients
+        id: recipients
+        run: |
+          if [ -n "${{ inputs.emails }}" ]; then
+            echo "to=${{ inputs.emails }}" >> $GITHUB_OUTPUT
+          else
+            echo "to=${{ secrets.EMAIL_TO }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send email
+        uses: dawidd6/action-send-mail@v3
+        if: always()
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USER }}
+          password: ${{ secrets.EMAIL_PASS }}
+          subject: >-
+            🗺️ ${{ inputs.region }} 여행정보 리포트
+            (${{ inputs.date }})
+          to: ${{ steps.recipients.outputs.to }}
+          from: 박기영
+          html_body: file://tour/output/report.html
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tour-report
+          path: ${{ env.WORKING_DIR }}/output/report.html

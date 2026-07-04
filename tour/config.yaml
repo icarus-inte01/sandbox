@@ -1,0 +1,41 @@
+# TourAPI 인증키 (GitHub Secrets에서 주입)
+api_keys:
+  tour_api: "${DATA_GO_KR_API_KEY}"
+
+# API 호출 설정
+api:
+  base_url: "https://apis.data.go.kr/B551011/KorService2"
+  request_delay: 0.05     # 요청 간 지연(초)
+  max_retries: 2           # 1회 재시도 (총 2회)
+  timeout: 15              # 타임아웃(초)
+  per_page: 10            # 페이지당 건수
+  mobile_os: "ETC"
+  mobile_app: "TourReport"
+
+# 캐시 설정
+cache:
+  enabled: true
+  ttl_days: 7             # 캐시 유효기간 (1주일)
+  dir: ".cache"
+
+# 정렬 설정
+sort:
+  arrange: "Q"            # A=제목순, C=수정일순(기본), D=생성일순; O/Q/R=대표이미지필수 variants
+
+# 카테고리 (표시 순서)
+categories:
+  - type_id: 12
+    name: "관광지"
+    icon: "🏛️"
+  - type_id: 39
+    name: "음식점"
+    icon: "🍽️"
+  - type_id: 15
+    name: "축제/행사"
+    icon: "🎪"
+  - type_id: 14
+    name: "문화시설"
+    icon: "🎭"
+  - type_id: 32
+    name: "숙박"
+    icon: "🏨"
