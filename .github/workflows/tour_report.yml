@@ -87,7 +87,7 @@ jobs:
             (${{ inputs.date }})
           to: ${{ steps.recipients.outputs.to }}
           from: 박기영
-          html_body: ${{ github.workspace }}/tour/output/report.html
+          html_body: file://${{ github.workspace }}/tour/output/report.html
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
