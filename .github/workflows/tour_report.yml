@@ -9,8 +9,8 @@ on:
         type: string
         default: '서울'
       date:
-        description: '여행 예정일 (YYYY-MM-DD)'
-        required: true
+        description: '여행 예정일 (YYYY-MM-DD, 미입력시 오늘 날짜)'
+        required: false
         type: string
         default: ''
       emails:
@@ -53,6 +53,15 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Compute run date
+        id: run_date
+        run: |
+          if [ -n "${{ inputs.date }}" ]; then
+            echo "value=${{ inputs.date }}" >> $GITHUB_OUTPUT
+          else
+            echo "value=$(date +%Y-%m-%d)" >> $GITHUB_OUTPUT
+          fi
+
       - name: Generate tour report
         id: run_report
         run: |
@@ -84,7 +93,7 @@ jobs:
           password: ${{ secrets.EMAIL_PASS }}
           subject: >-
             🗺️ ${{ inputs.region }} 여행정보 리포트
-            (${{ inputs.date }})
+            (${{ steps.run_date.outputs.value }})
           to: ${{ steps.recipients.outputs.to }}
           from: 박기영
           html_body: file://${{ github.workspace }}/tour/output/report.html

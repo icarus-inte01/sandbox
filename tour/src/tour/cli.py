@@ -27,6 +27,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="🗺️ 여행 코스 자동 생성기 — TourAPI 기반 지역 관광정보 리포트",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""사용 예:
+  python main.py --region 서울                      # 오늘 날짜
   python main.py --region 서울 --date 2026-07-11
   python main.py --region 부산 --date 2026-08-15 --emails user@example.com
   python main.py --region 제주 --date 2026-07-30 --no-cache --output my-report.html
@@ -40,8 +41,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--date",
-        required=True,
-        help="여행 예정일 (YYYY-MM-DD 형식, 예: 2026-07-11)",
+        required=False,
+        default="",
+        help="여행 예정일 (YYYY-MM-DD 형식, 미입력시 오늘 날짜)",
     )
     parser.add_argument(
         "--emails",
@@ -80,6 +82,8 @@ def validate_args(args: argparse.Namespace) -> None:
     Raises:
         SystemExit: 유효성 검증 실패시
     """
+    if not args.date:
+        args.date = datetime.now().strftime("%Y-%m-%d")
     # 날짜 형식 검증
     try:
         datetime.strptime(args.date, "%Y-%m-%d")

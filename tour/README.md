@@ -35,7 +35,10 @@ export DATA_GO_KR_API_KEY="발급받은_API_서비스_키"
 ## 사용법
 
 ```bash
-# 서울 2026-07-11 리포트 생성
+# 서울 오늘 날짜 리포트
+python main.py --region 서울
+
+# 서울 2026-07-11 리포트
 python main.py --region 서울 --date 2026-07-11
 
 # 부산 리포트 + 이메일 직접 지정
@@ -53,7 +56,7 @@ python main.py --region 서울 --date 2026-07-30 --output my-report.html
 | 인자 | 필수 | 설명 | 기본값 |
 |------|------|------|--------|
 | `--region` | ✅ | 여행 지역 (서울, 부산, 제주 등) | — |
-| `--date` | ✅ | 여행 예정일 (YYYY-MM-DD) | — |
+| `--date` | ❌ | 여행 예정일 (YYYY-MM-DD, 미입력시 오늘) | 오늘 날짜 |
 | `--emails` | ❌ | 수신 이메일 (쉼표 구분) | config의 EMAIL_TO |
 | `--config` | ❌ | 설정 파일 경로 | `config.yaml` |
 | `--output` | ❌ | HTML 출력 경로 | `output/report.html` |
