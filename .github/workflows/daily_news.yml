@@ -39,7 +39,7 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run news digest
+      - name: Run news digest + render HTML email
         id: run_script
         run: |
           set +e
@@ -47,7 +47,9 @@ jobs:
             --provider zen \
             --model big-pickle \
             --limit 15 \
-            --output markdown \
+            --output email \
+            --html-output news_digest.html \
+            --email-url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
             > news_digest.md 2> run_log.txt
           exit_code=$?
           echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
@@ -57,14 +59,6 @@ jobs:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-
-      - name: Render HTML email
-        id: render_html
-        run: |
-          python src/news/email_renderer.py \
-            news_digest.md \
-            news_digest.html \
-            "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       - name: Send email
         uses: dawidd6/action-send-mail@v3

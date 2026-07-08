@@ -1,13 +1,16 @@
 import argparse
 import logging
 import sys
+import tempfile
+from pathlib import Path
 
 import yaml
 
 from . import fetcher
-from . import summarizer as groq_summarizer
+from . import groq_summarizer
 from . import gemini_summarizer
 from . import zen_summarizer
+from . import email_renderer
 
 logger = logging.getLogger(__name__)
 
@@ -49,23 +52,24 @@ def _print_text(results: list[dict]):
             print()
 
 
-def _print_markdown(results: list[dict], summarizer_module):
+def _iter_markdown(results: list[dict], summarizer_module):
+    """Yield lines of markdown output."""
     for r in results:
         region_name = r.get("region_name", r["region"])
         emoji = summarizer_module.emoji_for(r["region"])
-        print(f"\n# {emoji} {region_name}\n")
+        yield f"\n# {emoji} {region_name}\n"
 
         if r.get("error"):
             err = r["error"]
             if _is_rate_limited(err):
-                print("> ⏳ API 토큰 한도 초과 — 잠시 후 다시 실행\n")
+                yield "> ⏳ API 토큰 한도 초과 — 잠시 후 다시 실행\n"
             else:
-                print(f"> [!CAUTION] 요약 생성 실패 - {err}\n")
+                yield f"> [!CAUTION] 요약 생성 실패 - {err}\n"
             continue
 
         articles = r.get("articles", [])
         if not articles:
-            print("> 수집된 뉴스 없음\n")
+            yield "> 수집된 뉴스 없음\n"
             continue
 
         for art in articles:
@@ -73,11 +77,20 @@ def _print_markdown(results: list[dict], summarizer_module):
             url = art.get("url", "")
             one_liner = art.get("one_liner", "")
             significance = art.get("significance", "")
-            print(f"1. **[{title}]({url})**")
-            print(f"   - **요약**: {one_liner}")
+            yield f"1. **[{title}]({url})**\n"
+            yield f"   - **요약**: {one_liner}\n"
             if significance:
-                print(f"   - **중요도**: {significance}")
-            print()
+                yield f"   - **중요도**: {significance}\n"
+            yield "\n"
+
+
+def _print_markdown(results: list[dict], summarizer_module):
+    for line in _iter_markdown(results, summarizer_module):
+        print(line, end="")
+
+
+def _build_markdown(results: list[dict], summarizer_module) -> str:
+    return "".join(_iter_markdown(results, summarizer_module))
 
 
 def main():
@@ -121,9 +134,21 @@ def main():
     parser.add_argument(
         "--output", "-o",
         type=str,
-        choices=["text", "markdown"],
+        choices=["text", "markdown", "email"],
         default="text",
-        help="Output format (default: text).",
+        help="Output format: text, markdown, or email (generates HTML file).",
+    )
+    parser.add_argument(
+        "--html-output",
+        type=str,
+        default="",
+        help="Path for HTML output when --output=email (default: news_digest.html).",
+    )
+    parser.add_argument(
+        "--email-url",
+        type=str,
+        default="",
+        help='URL for the "View in browser" link in email output.',
     )
     parser.add_argument(
         "--verbose", "-v",
@@ -186,13 +211,42 @@ def main():
         max_articles=args.limit,
     )
 
-    print("\n" + "=" * 50)
-    print("  World News Digest — Regional Summary")
-    print("=" * 50)
+    header = "\n" + "=" * 50 + "\n  World News Digest — Regional Summary\n" + "=" * 50
 
-    if args.output == "markdown":
+    if args.output == "email":
+        md_content = _build_markdown(results, summarizer)
+
+        md_path = args.html_output or ""
+        if md_path and not md_path.endswith(".html"):
+            md_path = md_path  # keep as-is
+
+        html_path = args.html_output or "news_digest.html"
+
+        # Write markdown to a temp file, feed to email renderer
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".md", delete=False, encoding="utf-8"
+        ) as tmp:
+            tmp.write(md_content)
+            tmp_path = tmp.name
+
+        email_renderer.render(
+            md_path=tmp_path,
+            html_path=html_path,
+            run_url=args.email_url,
+        )
+        Path(tmp_path).unlink(missing_ok=True)
+        print(f"\n{'=' * 50}", file=sys.stderr)
+        print(f"📧 HTML email saved to: {html_path}", file=sys.stderr)
+
+        # Also print the header + markdown to stdout for preview
+        print(header)
+        print(md_content)
+
+    elif args.output == "markdown":
+        print(header)
         _print_markdown(results, summarizer)
     else:
+        print(header)
         _print_text(results)
 
 
