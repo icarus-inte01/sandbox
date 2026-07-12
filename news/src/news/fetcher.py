@@ -5,6 +5,7 @@ import feedparser
 import yaml
 
 from .models import Article, FeedConfig, RegionConfig
+from . import common
 
 logger = logging.getLogger(__name__)
 
@@ -85,19 +86,20 @@ def fetch_all_articles(config_path: str = "config.yaml") -> dict[str, list[Artic
         seen: set[str] = set()
         region_articles: list[Article] = []
 
-        for feed_cfg in reg.feeds:
-            try:
-                articles = _fetch_feed(feed_cfg)
-            except Exception as exc:
-                logger.warning("Feed failed [%s] %s: %s", feed_cfg.source, feed_cfg.url, exc)
-                continue
-
-            for art in articles:
-                if art.url in seen:
+        with common.measure(f"fetch.{key}"):
+            for feed_cfg in reg.feeds:
+                try:
+                    articles = _fetch_feed(feed_cfg)
+                except Exception as exc:
+                    logger.warning("Feed failed [%s] %s: %s", feed_cfg.source, feed_cfg.url, exc)
                     continue
-                seen.add(art.url)
-                art.region = key
-                region_articles.append(art)
+
+                for art in articles:
+                    if art.url in seen:
+                        continue
+                    seen.add(art.url)
+                    art.region = key
+                    region_articles.append(art)
 
         # Keep articles in per-feed RSS order (feeds list important stories first).
         result[key] = region_articles

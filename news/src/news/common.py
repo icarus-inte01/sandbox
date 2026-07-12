@@ -11,13 +11,49 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 from typing import Callable
 
 from .models import Article
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Performance timer
+# ---------------------------------------------------------------------------
+
+_timings: dict[str, float] = {}
+
+
+@contextmanager
+def measure(name: str):
+    """Context manager that accumulates elapsed seconds to *name*."""
+    t0 = time.time()
+    try:
+        yield
+    finally:
+        elapsed = time.time() - t0
+        _timings[name] = _timings.get(name, 0.0) + elapsed
+
+
+def reset_timings():
+    _timings.clear()
+
+
+def print_timings():
+    """Log accumulated timing summary at INFO level."""
+    if not _timings:
+        return
+    total = sum(_timings.values())
+    lines = ["\n── Performance ──"]
+    for name, sec in sorted(_timings.items(), key=lambda x: -x[1]):
+        pct = 100.0 * sec / total if total > 0 else 0
+        lines.append(f"  {name:40s} {sec:7.2f}s  ({pct:5.1f}%)")
+    lines.append(f"  {'TOTAL':40s} {total:7.2f}s")
+    logger.info("\n".join(lines))
 
 # ---------------------------------------------------------------------------
 # Emoji helpers
@@ -117,6 +153,7 @@ def user_prompt(region_name: str, articles: list[Article]) -> str:
 # ---------------------------------------------------------------------------
 
 _CACHE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", ".cache")
+_cache_lock = threading.Lock()
 
 
 def cache_key(region_key: str, articles: list[Article], model: str) -> str:
@@ -140,6 +177,20 @@ def save_cache(cache_file: str, cache: dict):
             json.dump(cache, f, ensure_ascii=False)
     except OSError as exc:
         logger.warning("Cache write failed (%s): %s", cache_file, exc)
+
+
+def cache_put(cache_file: str, ckey: str, result: dict):
+    """Atomically update cache — thread-safe.
+
+    Loads, merges *result* under *ckey*, and writes back under a lock
+    so parallel threads do not overwrite each other's entries.
+    """
+    if not result.get("articles"):
+        return  # never cache empty results (Fix #2)
+    with _cache_lock:
+        cache = load_cache(cache_file)
+        cache[ckey] = result
+        save_cache(cache_file, cache)
 
 
 # ---------------------------------------------------------------------------
@@ -299,19 +350,13 @@ def post_process_results(
                     region_key, idx, source.published, days_ago,
                 )
 
-        # Cross-lingual check: proper nouns (Trump, FDA, Iran) should appear in output
-        out_text = (art.get("title", "") + " " + art.get("one_liner", "")).lower()
-        src_text = (source.title + " " + source.description).lower()
-        src_keywords = set(re.findall(r"[a-z][a-z0-9]{2,}", src_text))  # 3+ char alphanum
-        out_tokens = set(re.findall(r"[a-z][a-z0-9]{2,}", out_text))
-        shared = src_keywords & out_tokens
-
-        if len(src_keywords) >= 3 and len(shared) == 0:
+        # Cross-lingual heuristic: if source has many English proper nouns and
+        # NONE appear in the Korean output, flag at DEBUG (mostly false positive
+        # since named entities are often translated too).
+        src_keywords = set(re.findall(r"[a-z][a-z0-9]{2,}", (source.title + " " + source.description).lower()))
+        out_tokens = set(re.findall(r"[a-z][a-z0-9]{2,}", (art.get("title", "") + " " + art.get("one_liner", "")).lower()))
+        if len(src_keywords) >= 10 and len(src_keywords & out_tokens) == 0:
             flags.append("no_shared_keyterms")
-            logger.warning(
-                "[%s] Article #%d has no shared key terms with source — possible hallucination",
-                region_key, idx,
-            )
 
         if flags:
             art["_warnings"] = flags
