@@ -11,6 +11,7 @@ from . import groq_summarizer
 from . import gemini_summarizer
 from . import zen_summarizer
 from . import email_renderer
+from . import common
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,11 @@ def _build_markdown(results: list[dict], summarizer_module) -> str:
     return "".join(_iter_markdown(results, summarizer_module))
 
 
+def _find_empty_regions(results: list[dict]) -> list[str]:
+    """Return region keys whose results have 0 articles and no error."""
+    return [r["region"] for r in results if not r.get("articles") and not r.get("error")]
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Regional news aggregator — fetch and summarize top stories worldwide."
@@ -155,26 +161,26 @@ def main():
         action="store_true",
         help="Enable debug logging.",
     )
+    parser.add_argument(
+        "--no-fallback",
+        action="store_true",
+        help="Disable cross-provider fallback (default: fallback enabled).",
+    )
 
     args = parser.parse_args()
 
-    if args.provider == "zen":
-        summarizer = zen_summarizer
-        default_model = "big-pickle"
-        provider_label = "OpenCode Zen"
-    elif args.provider == "gemini":
-        summarizer = gemini_summarizer
-        default_model = "gemini-2.5-flash-lite"
-        provider_label = "Gemini"
-    else:
-        summarizer = groq_summarizer
-        default_model = "llama-3.3-70b-versatile"
-        provider_label = "Groq"
-
+    # Provider registry: name → (module, default_model, label)
+    PROVIDERS: dict[str, tuple] = {
+        "zen": (zen_summarizer, "big-pickle", "OpenCode Zen"),
+        "gemini": (gemini_summarizer, "gemini-2.5-flash-lite", "Gemini"),
+        "groq": (groq_summarizer, "llama-3.3-70b-versatile", "Groq"),
+    }
+    summarizer, default_model, provider_label = PROVIDERS[args.provider]
     model = args.model or default_model
 
     log_level = logging.DEBUG if args.verbose else logging.WARNING
     logging.basicConfig(level=log_level, format="%(levelname)s | %(message)s")
+    common.reset_timings()
 
     print("📡 Fetching news feeds...", file=sys.stderr)
     try:
@@ -203,6 +209,7 @@ def main():
         print("⚠️  No articles fetched. Check your config and network.", file=sys.stderr)
         sys.exit(0)
 
+    # ── Primary run ──────────────────────────────────────────────────────
     print(f"🤖 Summarizing with {provider_label} ({model})...", file=sys.stderr)
     results = summarizer.summarize_all(
         all_articles,
@@ -210,6 +217,36 @@ def main():
         model=model,
         max_articles=args.limit,
     )
+
+    # ── Provider-fallback for empty regions ──────────────────────────────
+    if not args.no_fallback:
+        fallback_order = [p for p in ("zen", "gemini", "groq") if p != args.provider]
+        for fallback_name in fallback_order:
+            need_retry = _find_empty_regions(results)
+            if not need_retry:
+                break
+            fallback_mod, fallback_model, fallback_label = PROVIDERS[fallback_name]
+            print(
+                f"🔁 Retrying {len(need_retry)} empty region(s) with {fallback_label}...",
+                file=sys.stderr,
+            )
+            retry_articles = {k: all_articles[k] for k in need_retry}
+            retry_results = fallback_mod.summarize_all(
+                retry_articles,
+                region_names=region_names,
+                model=fallback_model,
+                max_articles=args.limit,
+            )
+            # Merge: keep the original result unless the fallback returned articles
+            merged = []
+            for orig in results:
+                rk = orig["region"]
+                fb = next((r for r in retry_results if r["region"] == rk), None)
+                if fb and fb.get("articles") and not orig.get("articles"):
+                    merged.append(fb)
+                else:
+                    merged.append(orig)
+            results = merged
 
     header = "\n" + "=" * 50 + "\n  World News Digest — Regional Summary\n" + "=" * 50
 
@@ -248,6 +285,9 @@ def main():
     else:
         print(header)
         _print_text(results)
+
+    if args.verbose:
+        common.print_timings()
 
 
 if __name__ == "__main__":
