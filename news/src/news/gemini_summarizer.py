@@ -57,6 +57,7 @@ def summarize_region(
     user_msg = common.user_prompt(region_name, top)
 
     last_err = None
+    data = None
     for attempt in range(1, 4):
         client = genai.Client(api_key=api_key)
         try:
@@ -70,7 +71,6 @@ def summarize_region(
                     "max_output_tokens": 8192,
                 },
             )
-            break
         except Exception as exc:
             last_err = str(exc)
             if "429" in last_err or "RESOURCE_EXHAUSTED" in last_err:
@@ -88,22 +88,31 @@ def summarize_region(
                     "articles": [],
                     "error": last_err,
                 }
+            continue
+
+        content = response.text or "{}"
+        data = common.parse_json_response(content)
+        if data is None:
+            last_err = "Failed to parse Gemini response as JSON"
+            logger.warning("%s on %s (attempt %d/3)", last_err, region_key, attempt)
+            if attempt < 3:
+                time.sleep(attempt * 5)
+            continue
+
+        if not data.get("articles"):
+            last_err = "Model returned empty articles list"
+            logger.warning("%s for %s (attempt %d/3)", last_err, region_key, attempt)
+            if attempt < 3:
+                time.sleep(attempt * 5)
+            continue
+
+        break  # success
     else:
         return {
             "region": region_key,
             "region_name": region_name,
             "articles": [],
             "error": last_err,
-        }
-
-    content = response.text or "{}"
-    data = common.parse_json_response(content)
-    if data is None:
-        return {
-            "region": region_key,
-            "region_name": region_name,
-            "articles": [],
-            "error": "Failed to parse Gemini response as JSON",
         }
 
     articles_out = data.get("articles", [])
@@ -118,8 +127,7 @@ def summarize_region(
 
     result = common.post_process_results(result, top, region_key)
 
-    cache[ckey] = result
-    common.save_cache(_CACHE_FILE, cache)
+    common.cache_put(_CACHE_FILE, ckey, result)
     return result
 
 

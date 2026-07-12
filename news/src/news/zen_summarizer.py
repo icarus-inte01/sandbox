@@ -88,13 +88,14 @@ def summarize_region(
     last_err = None
     for attempt in range(1, 4):
         try:
-            data = _zen_chat_completion(
-                model=model,
-                messages=[
-                    {"role": "system", "content": common.get_system_prompt()},
-                    {"role": "user", "content": user_msg},
-                ],
-            )
+            with common.measure(f"api.{region_key}"):
+                data = _zen_chat_completion(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": common.get_system_prompt()},
+                        {"role": "user", "content": user_msg},
+                    ],
+                )
         except requests.HTTPError as exc:
             last_err = str(exc)
             status = exc.response.status_code if exc.response is not None else 0
@@ -137,9 +138,16 @@ def summarize_region(
             if not content:
                 content = "{}"
 
-            parsed = common.parse_json_response(content)
+            with common.measure(f"parse.{region_key}"):
+                parsed = common.parse_json_response(content)
             if parsed is not None:
-                break
+                if parsed.get("articles"):
+                    break  # Fix #1: non-empty result → success
+                last_err = "Model returned empty articles list"
+                logger.warning("%s for %s (attempt %d/3)", last_err, region_key, attempt)
+                if attempt < 3:
+                    time.sleep(attempt * 5)
+                continue
             else:
                 last_err = "No JSON found in model response"
                 logger.warning("%s for %s (attempt %d/3): %s", last_err, region_key, attempt, content[:200])
@@ -164,10 +172,10 @@ def summarize_region(
         "error": None,
     }
 
-    result = common.post_process_results(result, top, region_key)
+    with common.measure(f"post.{region_key}"):
+        result = common.post_process_results(result, top, region_key)
 
-    cache[ckey] = result
-    common.save_cache(_CACHE_FILE, cache)
+    common.cache_put(_CACHE_FILE, ckey, result)
     return result
 
 

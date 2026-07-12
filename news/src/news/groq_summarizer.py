@@ -11,6 +11,7 @@ Environment variable: GROQ_API_KEY
 import json
 import logging
 import os
+import time
 
 from groq import Groq
 
@@ -57,38 +58,58 @@ def summarize_region(
     client = Groq(api_key=api_key)
     user_msg = common.user_prompt(region_name, top)
 
-    try:
-        resp = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": common.get_system_prompt()},
-                {"role": "user", "content": user_msg},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.3,
-            max_tokens=8192,
-        )
-    except Exception as exc:
-        err_str = str(exc)
-        if "rate_limit" in err_str.lower() or "429" in err_str:
-            logger.warning("Rate limited on %s — cached results will be used next time", region_key)
-        else:
+    last_err = None
+    data = None
+    for attempt in range(1, 4):
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": common.get_system_prompt()},
+                    {"role": "user", "content": user_msg},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.3,
+                max_tokens=8192,
+            )
+        except Exception as exc:
+            last_err = str(exc)
+            if "rate_limit" in last_err.lower() or "429" in last_err:
+                wait = attempt * 10
+                logger.warning("Groq rate limited on %s (attempt %d/3), waiting %ds", region_key, attempt, wait)
+                time.sleep(wait)
+                continue
             logger.error("Groq API call failed for %s: %s", region_key, exc)
-        return {
-            "region": region_key,
-            "region_name": region_name,
-            "articles": [],
-            "error": err_str,
-        }
+            return {
+                "region": region_key,
+                "region_name": region_name,
+                "articles": [],
+                "error": last_err,
+            }
 
-    content = resp.choices[0].message.content or "{}"
-    data = common.parse_json_response(content)
-    if data is None:
+        content = resp.choices[0].message.content or "{}"
+        data = common.parse_json_response(content)
+        if data is None:
+            last_err = "Failed to parse model response as JSON"
+            logger.warning("%s on %s (attempt %d/3)", last_err, region_key, attempt)
+            if attempt < 3:
+                time.sleep(attempt * 5)
+            continue
+
+        if not data.get("articles"):
+            last_err = "Model returned empty articles list"
+            logger.warning("%s for %s (attempt %d/3)", last_err, region_key, attempt)
+            if attempt < 3:
+                time.sleep(attempt * 5)
+            continue
+
+        break  # success
+    else:
         return {
             "region": region_key,
             "region_name": region_name,
             "articles": [],
-            "error": "Failed to parse model response as JSON",
+            "error": last_err,
         }
 
     articles_out = data.get("articles", [])
@@ -103,8 +124,7 @@ def summarize_region(
 
     result = common.post_process_results(result, top, region_key)
 
-    cache[ckey] = result
-    common.save_cache(_CACHE_FILE, cache)
+    common.cache_put(_CACHE_FILE, ckey, result)
     return result
 
 
