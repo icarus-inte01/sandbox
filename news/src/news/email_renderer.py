@@ -29,8 +29,8 @@ def _convert_to_html(md_text: str) -> str:
             parts.append(f'<tr><td class="region-header">{stripline[2:]}</td></tr>')
             continue
 
-        # Article item: 1. **[Title](url)** or 1. **[Title](SourceName)**
-        m = re.match(r"\d+\.\s+\*\*\[(.+?)\]\((.+?)\)\*\*", stripline)
+        # Article item: 1. **[Title](url)** or 1. **[Title](SourceName)**, with optional · date
+        m = re.match(r"\d+\.\s+\*\*\[(.+?)\]\((.+?)\)\*\*(?:\s*·\s*(.+?))?\s*$", stripline)
         if m:
             if in_article:
                 parts.append("</table></td></tr>")
@@ -38,10 +38,13 @@ def _convert_to_html(md_text: str) -> str:
                 parts.append(_SPACER_ROW)
             needs_spacer = True
             title, url_or_source = m.group(1), m.group(2)
+            pub_date = m.group(3) or ""
             if url_or_source.startswith("http"):
                 title_html = f'<a href="{url_or_source}">{title}</a>'
             else:
                 title_html = f"{title} <span class=\"source\">({url_or_source})</span>"
+            if pub_date:
+                title_html += f' <span class="source">· {pub_date}</span>'
             parts.append(
                 f'<tr><td class="article-card">'
                 f'<table cellpadding="0" cellspacing="0" class="article-table">'

@@ -2,7 +2,9 @@ import argparse
 import logging
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import yaml
 
@@ -19,6 +21,21 @@ logger = logging.getLogger(__name__)
 def _is_rate_limited(err: str) -> bool:
     err_lower = err.lower()
     return any(k in err_lower for k in ("rate_limit", "429", "resource_exhausted", "quota"))
+
+
+def _format_published(published: str) -> str:
+    """Format an ISO publish date into a KST date string (YYYY-MM-DD)."""
+    if not published:
+        return ""
+    if len(published) <= 10:
+        return published  # date-only string: no timezone to convert
+    try:
+        dt = datetime.fromisoformat(published.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d")
+    except (ValueError, TypeError):
+        return published
 
 
 def _print_text(results: list[dict]):
@@ -45,7 +62,9 @@ def _print_text(results: list[dict]):
             url = art.get("url", "")
             one_liner = art.get("one_liner", "")
             significance = art.get("significance", "")
-            print(f"{i}. [{title}]")
+            date = _format_published(art.get("published", ""))
+            date_suffix = f" ({date})" if date else ""
+            print(f"{i}. [{title}]{date_suffix}")
             print(f"   요약: {one_liner}")
             if significance:
                 print(f"   중요도: {significance}")
@@ -78,7 +97,9 @@ def _iter_markdown(results: list[dict], summarizer_module):
             url = art.get("url", "")
             one_liner = art.get("one_liner", "")
             significance = art.get("significance", "")
-            yield f"1. **[{title}]({url})**\n"
+            date = _format_published(art.get("published", ""))
+            date_suffix = f" · {date}" if date else ""
+            yield f"1. **[{title}]({url})**{date_suffix}\n"
             yield f"   - **요약**: {one_liner}\n"
             if significance:
                 yield f"   - **중요도**: {significance}\n"

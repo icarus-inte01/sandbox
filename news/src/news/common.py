@@ -362,6 +362,9 @@ def post_process_results(
             art["_warnings"] = flags
             logger.info("[%s] Article #%d flags: %s", region_key, idx, ", ".join(flags))
 
+        # Attach the source publish date so renderers can show it next to the title.
+        art["published"] = source.published
+
         validated.append(art)
 
     result["articles"] = validated
