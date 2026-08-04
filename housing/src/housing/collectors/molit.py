@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 # 국토부 실거래가 API (15126469 — RTMSDataSvcAptTrade, Dev 없음)
-MOLIT_API_URL = "http://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade"
+MOLIT_API_URL = "https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade"
 
 
 class MolitTradeCollector(BaseCollector):
@@ -125,8 +125,11 @@ class MolitTradeCollector(BaseCollector):
         응답 구조: response > body > items > item (list)
         """
         trades: list[TradeRecord] = []
-        body = raw.get("response", {}).get("body", {})
-        items_container = body.get("items", {})
+        # 국토부 API 응답구조 변경(2026.8): {"header":..,"body":..} 최상위 구조, 구형 "response" 래퍼도 호환
+        raw_body = raw.get("body") or raw.get("response", {}).get("body", {})
+        if not isinstance(raw_body, dict):
+            raw_body = {}
+        items_container = raw_body.get("items", {})
         if not isinstance(items_container, dict):
             items = []
         else:

@@ -18,7 +18,7 @@ from src.housing.models import SaleListing, SupplyType, SaleStatus
 logger = logging.getLogger(__name__)
 
 
-LH_ANNOUNCE_URL = "http://apis.data.go.kr/B552555/lhLeaseNoticeInfo1/lhLeaseNoticeInfo1"
+LH_ANNOUNCE_URL = "https://apis.data.go.kr/B552555/lhLeaseNoticeInfo1/lhLeaseNoticeInfo1"
 
 PAN_SS_STATUS_MAP: dict[str, SaleStatus] = {
     "공고중": SaleStatus.OPEN,
