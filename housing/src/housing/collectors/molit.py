@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
@@ -15,7 +16,8 @@ from src.housing.models import SaleListing, SupplyType, SaleStatus, TradeRecord
 logger = logging.getLogger(__name__)
 
 
-# 국토부 실거래가 API (15126469 — RTMSDataSvcAptTrade, Dev 없음)
+# 국토부 실거래가 정식 API (15126469 — RTMSDataSvcAptTrade)
+# 참고: 개발용 엔드포인트(RTMSDataSvcAptTradeDev)도 존재하나 정식 API 사용
 MOLIT_API_URL = "https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade"
 
 
@@ -68,8 +70,8 @@ class MolitTradeCollector(BaseCollector):
         }
 
         try:
-            data = self.client.fetch(MOLIT_API_URL, params)
-            return self._parse_trades_json(data, lawd_cd, year_month)
+            xml_text = self.client.fetch_text(MOLIT_API_URL, params)
+            return self._parse_trades_xml(xml_text, lawd_cd, year_month)
         except Exception as e:
             logger.error("Failed to fetch trades for %s/%s: %s", lawd_cd, year_month, e)
             return []
@@ -117,39 +119,52 @@ class MolitTradeCollector(BaseCollector):
 
         return self._aggregate_trades(all_trades, region_code)
 
-    def _parse_trades_json(
-        self, raw: dict[str, Any], lawd_cd: str, year_month: str
+    def _parse_trades_xml(
+        self, xml_text: str, lawd_cd: str, year_month: str
     ) -> list[TradeRecord]:
-        """JSON 응답에서 TradeRecord 리스트를 추출합니다.
+        """XML 응답에서 TradeRecord 리스트를 추출합니다.
 
-        응답 구조: response > body > items > item (list)
+        응답 구조: <response><header>..</header><body><items><item>...</item></items></body></response>
+        (국토부 실거래가 API는 XML만 반환 — JSON 강제 파싱 시 실패하므로 fetch_text() 사용)
         """
         trades: list[TradeRecord] = []
-        # 국토부 API 응답구조 변경(2026.8): {"header":..,"body":..} 최상위 구조, 구형 "response" 래퍼도 호환
-        raw_body = raw.get("body") or raw.get("response", {}).get("body", {})
-        if not isinstance(raw_body, dict):
-            raw_body = {}
-        items_container = raw_body.get("items", {})
-        if not isinstance(items_container, dict):
-            items = []
-        else:
-            items = items_container.get("item", [])
-            if not isinstance(items, list):
-                items = [items] if items else []
+        try:
+            root = ET.fromstring(xml_text)
+        except ET.ParseError as e:
+            logger.error("MOLIT XML parse error for %s/%s: %s", lawd_cd, year_month, e)
+            return trades
+
+        header = root.find("header")
+        if header is not None:
+            result_code = (header.findtext("resultCode") or "").strip()
+            if result_code != "00" and result_code != "000":
+                logger.warning(
+                    "MOLIT API error for %s/%s: code=%s msg=%s",
+                    lawd_cd, year_month, result_code, header.findtext("resultMsg"),
+                )
+                return trades
+
+        body = root.find("body")
+        if body is None:
+            return trades
+        items_container = body.find("items")
+        if items_container is None:
+            return trades
+        items = items_container.findall("item")
+        if not items:
+            return trades
 
         for item in items:
-            if not isinstance(item, dict):
-                continue
             try:
                 trade = TradeRecord(
-                    apartment_name=str(item.get("aptNm", "") or ""),
-                    price=self._parse_price(str(item.get("dealAmount", "") or "")),
-                    area=float(item.get("excluUseAr") or 0),
-                    contract_date=f"{year_month}{str(item.get('dealDay', '01') or '01'):0>2}",
-                    floor=int(item.get("floor") or 0),
-                    build_year=int(item.get("buildYear") or 0),
+                    apartment_name=str(item.findtext("aptNm") or ""),
+                    price=self._parse_price(str(item.findtext("dealAmount") or "")),
+                    area=float(item.findtext("excluUseAr") or 0),
+                    contract_date=f"{year_month}{str(item.findtext('dealDay') or '01'):0>2}",
+                    floor=int(item.findtext("floor") or 0),
+                    build_year=int(item.findtext("buildYear") or 0),
                     region_code=lawd_cd,
-                    region_name=str(item.get("umdNm", "") or ""),
+                    region_name=str(item.findtext("umdNm") or ""),
                 )
                 if trade.price > 0 and trade.area > 0:
                     trades.append(trade)
