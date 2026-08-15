@@ -16,7 +16,7 @@ def sample_listing() -> SaleListing:
         units=500,
         price=80000,
         builder="GS건설",
-        source="cheongyak",
+        source="applyhome",
         discount_rate=15.0,
         competition_rate=10.0,
     )

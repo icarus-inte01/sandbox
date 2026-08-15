@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 # Collector 팩토리 맵
 COLLECTOR_MAP: dict[str, str] = {
-    "cheongyak": "src.housing.collectors.cheongyak.CheongyakCollector",
+    "applyhome": "src.housing.collectors.applyhome.ApplyhomeCollector",
     "lh": "src.housing.collectors.lh.LHCollector",
 
     "onbid": "src.housing.collectors.onbid.OnbidCollector",
@@ -128,7 +128,7 @@ def cmd_collect(args: argparse.Namespace) -> list[SaleListing]:
     all_listings: list[SaleListing] = []
 
     src_name = getattr(args, "source", "all")
-    sources = ["cheongyak", "lh", "onbid"] if src_name == "all" else [src_name]
+    sources = ["applyhome", "lh", "onbid"] if src_name == "all" else [src_name]
 
     for src in sources:
         try:
@@ -281,7 +281,7 @@ def cmd_all(args: argparse.Namespace) -> None:
                                    and not molit_collector.client._service_key.startswith("${"))
 
     # 시/도 fallback: 청약홈 3-digit SUBSCRPT_AREA_CODE → 5-digit 법정동코드
-    CHEONGYAK_CODE_TO_LAWD: dict[str, str] = {
+    APPLYHOME_CODE_TO_LAWD: dict[str, str] = {
         "100": "11110", "200": "51110", "300": "30110", "312": "44130",
         "338": "36110", "360": "43110", "400": "28000", "410": "41110",
         "500": "12210", "513": "12110", "560": "52110", "600": "26110",
@@ -296,7 +296,7 @@ def cmd_all(args: argparse.Namespace) -> None:
     for listing in housing_active:
         lawd_cd = address_to_lawd_cd(listing.region)
         if not lawd_cd:
-            lawd_cd = CHEONGYAK_CODE_TO_LAWD.get(listing.region_code, "")
+            lawd_cd = APPLYHOME_CODE_TO_LAWD.get(listing.region_code, "")
         listing.lawd_cd = lawd_cd
         if lawd_cd:
             listing_lawd_cds.add(lawd_cd)
@@ -486,7 +486,7 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 예시:
-  %(prog)s collect --source cheongyak --mock
+  %(prog)s collect --source applyhome --mock
   %(prog)s analyze --output table
   %(prog)s report --output output/report.html
   %(prog)s all --mock

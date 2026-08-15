@@ -21,7 +21,7 @@ class TestSaleListing:
             name="래미안", region="서울", supply_type=SupplyType.APT,
             status=SaleStatus.OPEN, units=500, price=80000,
             builder="삼성물산", discount_rate=15.0, total_score=85.0,
-            source="cheongyak",
+            source="applyhome",
         )
         assert listing.name == "래미안"
         assert listing.supply_type == SupplyType.APT

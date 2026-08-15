@@ -45,7 +45,7 @@ python -m src.housing.cli all --send-email
 ```bash
 python -m src.housing.cli analyze --output table           # 주택 유망도 분석
 python -m src.housing.cli analyze --output table --land    # 토지(대지) 평가
-python -m src.housing.cli collect --source cheongyak       # 특정 소스만 수집
+python -m src.housing.cli collect --source applyhome       # 특정 소스만 수집
 python -m src.housing.cli collect --source onbid           # 온비드 공매 대지만
 ```
 
@@ -147,7 +147,7 @@ housing/
 │   ├── models.py                   # SaleListing, TradeRecord 데이터 모델
 │   ├── collectors/
 │   │   ├── base.py                 # 수집기 기본 클래스
-│   │   ├── cheongyak.py            # 청약홈 아파트 분양
+│   │   ├── applyhome.py            # 청약홈 아파트 분양
 │   │   ├── lh.py                   # LH 토지/용지
 │   │   ├── onbid.py                # 온비드 공매 대지
 │   │   ├── molit.py                # 국토부 아파트 실거래가

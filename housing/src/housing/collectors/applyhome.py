@@ -50,12 +50,12 @@ def _sum_households(model: dict[str, Any]) -> int:
     )
 
 
-class CheongyakCollector(BaseCollector):
+class ApplyhomeCollector(BaseCollector):
     """청약홈 분양정보 수집기."""
 
     def __init__(self, config: Optional[Any] = None):
         super().__init__(config)
-        self.source_name = "cheongyak"
+        self.source_name = "applyhome"
 
     def collect(
         self,
@@ -155,7 +155,7 @@ class CheongyakCollector(BaseCollector):
                 result.append(listing)
             return result
         except Exception as e:
-            logger.error("Cheongyak API call failed: %s", e)
+            logger.error("Applyhome API call failed: %s", e)
             return self._mock_collect(region)
 
     def _mock_collect(self, region: Optional[str] = None) -> list[SaleListing]:
@@ -361,7 +361,7 @@ class CheongyakCollector(BaseCollector):
             builder=builder,
             region_code=region_code,
             announcement_date=announcement_date,
-            source="cheongyak",
+            source="applyhome",
             units_info=units_info,
         )
 

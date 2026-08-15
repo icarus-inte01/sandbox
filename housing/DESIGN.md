@@ -101,7 +101,7 @@ stateDiagram-v2
 - **CLOSED**: 공고일이 30~364일 경과한 경우, 일반적인 청약은 종료되었습니다. 리포트에서 제외됩니다.
 - **UNSOLD**: 공고일이 365일 이상 지났지만 단지명에 "미분양", "잔여", "무순위", "취소", "보류지" 등의 키워드가 포함된 경우입니다. 이는 조합원 취소분이나 잔여 세대가 매물로 나온 경우로, **가격 할인이 큰 알짜 매물이 될 가능성이 높아** 리포트에 포함합니다.
 
-상태 판별 로직은 `cheongyak.py`의 `_estimate_status()` 메서드에서 수행합니다. 주의할 점은 청약홈 API가 공고일을 기준으로 90일(현재는 365일로 확장)만 데이터를 제공하므로, UNSOLD 상태의 매물은 API 응답에 포함되지 않을 수 있어 API 조회 기간을 365일로 늘렸습니다.
+상태 판별 로직은 `applyhome.py`의 `_estimate_status()` 메서드에서 수행합니다. 주의할 점은 청약홈 API가 공고일을 기준으로 90일(현재는 365일로 확장)만 데이터를 제공하므로, UNSOLD 상태의 매물은 API 응답에 포함되지 않을 수 있어 API 조회 기간을 365일로 늘렸습니다.
 
 ---
 
@@ -133,7 +133,7 @@ graph TB
     end
 
     subgraph Data["Data Layer"]
-        CHEONG[cheongyak.py<br/>청약홈 수집기]
+        APPHOME[applyhome.py<br/>청약홈 수집기]
         LH[lh.py<br/>LH 수집기]
         ONBID[onbid.py<br/>온비드 수집기]
         MOLIT[molit.py<br/>실거래가 수집기]
@@ -146,15 +146,15 @@ graph TB
         CONFIG[config.py<br/>Config / YAML]
     end
 
-    CLI --> CHEONG & LH & ONBID
+    CLI --> APPHOME & LH & ONBID
     CLI --> MOLIT
     CLI --> SCORER & RANKER
     CLI --> RENDER
-    CHEONG & LH & ONBID --> APICLIENT --> CACHE
+    APPHOME & LH & ONBID --> APICLIENT --> CACHE
     MOLIT --> APICLIENT --> CACHE
     SCORER --> BRAND & REGION & PRICE
     SCORER & RANKER & RENDER --> MODELS
-    CHEONG & LH & ONBID & MOLIT --> MODELS
+    APPHOME & LH & ONBID & MOLIT --> MODELS
     CLI --> CONFIG
     SCORER --> CONFIG
 ```
@@ -177,7 +177,7 @@ housing/
 │   ├── models.py                   # SaleListing, TradeRecord, SupplyType, SaleStatus
 │   ├── collectors/
 │   │   ├── base.py                 # BaseCollector ABC — Config, OdcloudClient, Cache
-│   │   ├── cheongyak.py            # 청약홈 아파트 분양 — API 15098547
+│   │   ├── applyhome.py            # 청약홈 아파트 분양 — API 15098547
 │   │   ├── lh.py                   # LH 토지/용지 — API 15058530 (upp_ais_tp_cd=01)
 │   │   ├── onbid.py                # 온비드 공매 대지 — API B010003
 │   │   ├── molit.py                # 국토부 실거래가 — API 15126469
@@ -220,7 +220,7 @@ housing/
 ```mermaid
 sequenceDiagram
     participant CLI as cli.py (cmd_all)
-    participant CH as CheongyakCollector
+    participant CH as ApplyhomeCollector
     participant LH as LHCollector
     participant ON as OnbidCollector
     participant MO as MolitTradeCollector
@@ -591,7 +591,7 @@ vworld.kr만 예외적으로 별도 HTTP 세션을 사용합니다. 이는 vworl
 
 | API | ID | 수집기 | 출력 데이터 |
 |-----|-----|--------|-------------|
-| 청약홈 분양공고 상세 | 15098547 | cheongyak | SaleListing (APT) |
+| 청약홈 분양공고 상세 | 15098547 | applyhome | SaleListing (APT) |
 | 국토부 아파트 실거래가 | 15126469 | molit | TradeRecord |
 | LH 분양임대공고문 | 15058530 | lh | SaleListing (LAND) |
 | 온비드 부동산 물건목록 | B010003 | onbid | SaleListing (LAND) |
@@ -922,7 +922,7 @@ cache:
 flowchart LR
     LISTING["listing.region<br/>서울특별시 성북구 장위동"] --> SIGUNGU["SIGUNGU_TO_LAWD<br/>키 longest match"]
     SIGUNGU --> LAWD["법정동코드 앞 5자리<br/>11290"]
-    LISTING --> FALLBACK["CHEONGYAK_CODE_TO_LAWD<br/>region_code 3자리 → 5자리"]
+    LISTING --> FALLBACK["APPLYHOME_CODE_TO_LAWD<br/>region_code 3자리 → 5자리"]
     FALLBACK --> LAWD
 
     LAWD --> MOLIT["Molit API 호출<br/>getNearbyPrices(lawd_cd)"]
@@ -932,7 +932,7 @@ flowchart LR
 
 1. **1차 매핑** (`SIGUNGU_TO_LAWD`): `listing.region` 문자열(예: "서울특별시 성북구 장위동")에서 시/군/구명을 longest match로 추출하여 240개 시/군/구 매핑 테이블에서 법정동코드 5자리(시/군/구 코드)를 찾습니다. 예: "성북구" → `11290`.
 
-2. **2차 매핑 (fallback)** (`CHEONGYAK_CODE_TO_LAWD`): 청약홈 API가 자체적으로 제공하는 3자리 region_code(예: `100`=서울)를 5자리 법정동코드로 변환합니다. 이는 1차 매핑이 실패했을 때 사용됩니다. 17개 시/도 수준의 매핑만 존재하므로 정밀도는 낮지만, 마지막 보루 역할을 합니다.
+2. **2차 매핑 (fallback)** (`APPLYHOME_CODE_TO_LAWD`): 청약홈 API가 자체적으로 제공하는 3자리 region_code(예: `100`=서울)를 5자리 법정동코드로 변환합니다. 이는 1차 매핑이 실패했을 때 사용됩니다. 17개 시/도 수준의 매핑만 존재하므로 정밀도는 낮지만, 마지막 보루 역할을 합니다.
 
 정확한 법정동코드 매칭은 **할인율 계산의 정확도**에 직접적인 영향을 미칩니다. 엉뚱한 지역의 실거래가와 비교하면 할인율이 왜곡되기 때문입니다.
 

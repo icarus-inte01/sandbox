@@ -4,7 +4,7 @@
 Usage:
     python main.py --help
     python main.py collect --mock
-    python main.py collect --source cheongyak --mock
+    python main.py collect --source applyhome --mock
     python main.py analyze --output table --mock
     python main.py report --mock
     python main.py all --mock

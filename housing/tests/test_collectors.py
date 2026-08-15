@@ -1,31 +1,31 @@
 """데이터 수집기 테스트."""
 from __future__ import annotations
 
-from src.housing.collectors.cheongyak import CheongyakCollector
+from src.housing.collectors.applyhome import ApplyhomeCollector
 from src.housing.collectors.lh import LHCollector
 
 
 from src.housing.collectors.molit import MolitTradeCollector
 
-class TestCheongyakCollector:
+class TestApplyhomeCollector:
     def test_mock_collection(self):
         """Mock 수집 검증."""
-        c = CheongyakCollector()
+        c = ApplyhomeCollector()
         listings = c.collect(mock=True)
         assert len(listings) > 0
-        assert all(l.source == "cheongyak" for l in listings)
+        assert all(l.source == "applyhome" for l in listings)
         assert all(l.name for l in listings)
 
     def test_mock_region_filter(self):
         """지역 필터 적용."""
-        c = CheongyakCollector()
+        c = ApplyhomeCollector()
         seoul_listings = c.collect(region="11", mock=True)
         busan_listings = c.collect(region="26", mock=True)
         assert len(seoul_listings) >= len(busan_listings)
 
     def test_model_conversion(self):
         """SaleListing 변환 검증."""
-        c = CheongyakCollector()
+        c = ApplyhomeCollector()
         listings = c.collect(mock=True)
         for l in listings:
             assert hasattr(l, 'name')
@@ -44,7 +44,7 @@ class TestLHCollector:
             assert l.source == "lh"
 
     def test_collect_total(self):
-        """전체 수집 = 택지 (분양은 cheongyak으로 대체)."""
+        """전체 수집 = 택지 (분양은 applyhome으로 대체)."""
         c = LHCollector()
         total = c.collect(mock=True)
         land = c.collect_land(mock=True)
