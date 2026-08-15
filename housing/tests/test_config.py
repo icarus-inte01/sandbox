@@ -16,13 +16,14 @@ class TestConfig:
         assert "weights" in config
         assert config["weights"]["discount_rate"] == 0.35
 
-    def test_config_class(self):
+    def test_config_class(self, monkeypatch):
         """Config 클래스 정상 동작."""
+        monkeypatch.delenv("DATA_GO_KR_API_KEY", raising=False)
         config = Config()
         # 환경변수 미설정시 ${DATA_GO_KR_API_KEY} 문자 그대로 유지
         assert "${DATA_GO_KR_API_KEY}" in config.data_go_kr_key
         assert config.weights["discount_rate"] == 0.35
-        assert config.request_delay == 0.5
+        assert config.request_delay == 0.1
         assert config.max_retries == 3
         assert config.timeout == 30
         assert config.per_page == 100

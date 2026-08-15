@@ -35,27 +35,20 @@ class TestCheongyakCollector:
 
 
 class TestLHCollector:
-    def test_mock_collect_apt(self):
-        """LH 분양 Mock 수집."""
-        c = LHCollector()
-        listings = c.collect_apt(mock=True)
-        assert len(listings) > 0
-        for l in listings:
-            assert l.source == "lh"
-
     def test_mock_collect_land(self):
         """LH 택지 Mock 수집."""
         c = LHCollector()
         listings = c.collect_land(mock=True)
         assert len(listings) > 0
+        for l in listings:
+            assert l.source == "lh"
 
     def test_collect_total(self):
-        """전체 수집 = 분양 + 택지."""
+        """전체 수집 = 택지 (분양은 cheongyak으로 대체)."""
         c = LHCollector()
         total = c.collect(mock=True)
-        apt = c.collect_apt(mock=True)
         land = c.collect_land(mock=True)
-        assert len(total) == len(apt) + len(land)
+        assert len(total) == len(land)
 
 
 
