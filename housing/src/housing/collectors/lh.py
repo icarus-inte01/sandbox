@@ -103,8 +103,10 @@ class LHCollector(BaseCollector):
             return self._mock_collect_land()
 
         if not self.client._service_key or self.client._service_key.startswith("${"):
-            logger.warning("DATA_GO_KR_API_KEY not configured. Falling back to mock data.")
-            return self._mock_collect_land()
+            raise RuntimeError(
+                "DATA_GO_KR_API_KEY not configured. "
+                "Set DATA_GO_KR_API_KEY env var or use mock=True (--mock) explicitly."
+            )
 
         try:
             items = self._fetch_announce_list(upp_ais_tp_cd="01")
@@ -118,7 +120,7 @@ class LHCollector(BaseCollector):
             return results
         except Exception as e:
             logger.error("LH land API call failed: %s", e)
-            return self._mock_collect_land()
+            raise
 
     def collect(self, **kwargs) -> list[SaleListing]:
         """LH 토지/용지 데이터 수집."""

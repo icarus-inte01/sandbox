@@ -66,8 +66,10 @@ class OnbidCollector(BaseCollector):
         if mock:
             results = self._mock_collect()
         elif not self.client._service_key or self.client._service_key.startswith("${"):
-            logger.warning("DATA_GO_KR_API_KEY not configured. Falling back to mock data.")
-            results = self._mock_collect()
+            raise RuntimeError(
+                "DATA_GO_KR_API_KEY not configured. "
+                "Set DATA_GO_KR_API_KEY env var or use mock=True (--mock) explicitly."
+            )
         else:
             results = []
             logger.info("Onbid — collecting 대지 (서울/경기도)...")
@@ -82,6 +84,7 @@ class OnbidCollector(BaseCollector):
                 logger.info("  → total %d 대지 items", len(results))
             except Exception as e:
                 logger.error("Onbid fetch failed: %s", e)
+                raise
 
         before = len(results)
         results = [r for r in results if r.status in (SaleStatus.PLANNED, SaleStatus.OPEN)]

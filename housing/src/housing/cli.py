@@ -277,8 +277,17 @@ def cmd_all(args: argparse.Namespace) -> None:
     from src.housing.analyzer.price_comparator import calculate_discount_rate_per_area
 
     molit_collector = MolitTradeCollector()
-    mock_mode = args.mock or not (molit_collector.client._service_key
-                                   and not molit_collector.client._service_key.startswith("${"))
+    mock_mode = args.mock
+    molit_available = bool(
+        mock_mode
+        or (molit_collector.client._service_key
+            and not molit_collector.client._service_key.startswith("${"))
+    )
+    if not molit_available:
+        logger.error(
+            "DATA_GO_KR_API_KEY not configured — 실거래가(할인율) 조회 생략. "
+            "환경변수 설정 또는 --mock 옵션을 사용하세요."
+        )
 
     # 시/도 fallback: 청약홈 3-digit SUBSCRPT_AREA_CODE → 5-digit 법정동코드
     APPLYHOME_CODE_TO_LAWD: dict[str, str] = {
@@ -303,15 +312,16 @@ def cmd_all(args: argparse.Namespace) -> None:
 
     # 2단계: 수집된 모든 법정동코드에 대해 실거래가 조회
     all_nearby_prices: dict[str, dict[str, Any]] = {}
-    for lawd_cd in sorted(listing_lawd_cds):
-        prices = molit_collector.get_nearby_prices(lawd_cd, months_back=3, mock=mock_mode)
-        all_nearby_prices[lawd_cd] = prices
-        tc = prices.get("trade_count", 0)
-        if tc > 0:
-            logger.info("  -> nearby prices for %s: avg=%d만원 (%d건)",
-                       lawd_cd, prices["avg_price"], tc)
-        else:
-            logger.warning("  -> nearby prices for %s: 0건 (months_back=3)", lawd_cd)
+    if molit_available:
+        for lawd_cd in sorted(listing_lawd_cds):
+            prices = molit_collector.get_nearby_prices(lawd_cd, months_back=3, mock=mock_mode)
+            all_nearby_prices[lawd_cd] = prices
+            tc = prices.get("trade_count", 0)
+            if tc > 0:
+                logger.info("  -> nearby prices for %s: avg=%d만원 (%d건)",
+                           lawd_cd, prices["avg_price"], tc)
+            else:
+                logger.warning("  -> nearby prices for %s: 0건 (months_back=3)", lawd_cd)
 
     LAWD_PREFIX_TO_DO: dict[str, str] = {
         "11": "서울특별시", "12": "전남광주통합특별시", "26": "부산광역시",
@@ -337,15 +347,16 @@ def cmd_all(args: argparse.Namespace) -> None:
     for lawd_cd, prices in all_nearby_prices.items():
         if prices.get("trade_count", 0) > 0:
             sido_with_data.add(LAWD_PREFIX_TO_DO.get(lawd_cd[:2], ""))
-    for sido_name in sorted(sido_touched - sido_with_data):
-        probe_lawd = SIDO_PROBE_LAWD.get(sido_name)
-        if probe_lawd:
-            logger.info("  [probe] %s: 대표 법정동(%s) fallback pool 조회", sido_name, probe_lawd)
-            probe_prices = molit_collector.get_nearby_prices(probe_lawd, months_back=3, mock=mock_mode)
-            if probe_prices.get("trade_count", 0) > 0:
-                all_nearby_prices[probe_lawd] = probe_prices
-                logger.info("    -> %s: avg=%d만원 (%d건)", probe_lawd,
-                           probe_prices["avg_price"], probe_prices["trade_count"])
+    if molit_available:
+        for sido_name in sorted(sido_touched - sido_with_data):
+            probe_lawd = SIDO_PROBE_LAWD.get(sido_name)
+            if probe_lawd:
+                logger.info("  [probe] %s: 대표 법정동(%s) fallback pool 조회", sido_name, probe_lawd)
+                probe_prices = molit_collector.get_nearby_prices(probe_lawd, months_back=3, mock=mock_mode)
+                if probe_prices.get("trade_count", 0) > 0:
+                    all_nearby_prices[probe_lawd] = probe_prices
+                    logger.info("    -> %s: avg=%d만원 (%d건)", probe_lawd,
+                               probe_prices["avg_price"], probe_prices["trade_count"])
 
     sido_pool: dict[str, list[dict[str, Any]]] = {}
     for lawd_cd, prices in all_nearby_prices.items():
@@ -389,25 +400,26 @@ def cmd_all(args: argparse.Namespace) -> None:
                 listing.discount_rate = rate
 
     # 3단계: 각 listing을 해당 법정동코드의 실거래가와 매칭 (㎡당 단가 기준)
-    for listing in housing_active:
-        lawd_cd = getattr(listing, "lawd_cd", "")
-        if lawd_cd and lawd_cd in all_nearby_prices:
-            nearby = all_nearby_prices[lawd_cd]
-            if nearby.get("trade_count", 0) > 0:
-                _apply_market_price(listing, nearby)
-            else:
-                sido_key = LAWD_PREFIX_TO_DO.get(lawd_cd[:2], "")
-                if sido_key in sido_fallback:
-                    logger.info("  [fallback] %s (lawd=%s): 시/도 평균(%s) 사용 (%d건)",
-                                listing.name, lawd_cd, sido_key,
-                                sido_fallback[sido_key]["trade_count"])
-                    _apply_market_price(listing, sido_fallback[sido_key])
+    if molit_available:
+        for listing in housing_active:
+            lawd_cd = getattr(listing, "lawd_cd", "")
+            if lawd_cd and lawd_cd in all_nearby_prices:
+                nearby = all_nearby_prices[lawd_cd]
+                if nearby.get("trade_count", 0) > 0:
+                    _apply_market_price(listing, nearby)
                 else:
-                    logger.warning("  [skip] %s (lawd=%s): trade_count=0, fallback 없음",
-                                   listing.name, lawd_cd)
-        else:
-            logger.warning("  [skip] %s: lawd_cd 없음 (region=%s, code=%s)",
-                          listing.name, listing.region, listing.region_code)
+                    sido_key = LAWD_PREFIX_TO_DO.get(lawd_cd[:2], "")
+                    if sido_key in sido_fallback:
+                        logger.info("  [fallback] %s (lawd=%s): 시/도 평균(%s) 사용 (%d건)",
+                                    listing.name, lawd_cd, sido_key,
+                                    sido_fallback[sido_key]["trade_count"])
+                        _apply_market_price(listing, sido_fallback[sido_key])
+                    else:
+                        logger.warning("  [skip] %s (lawd=%s): trade_count=0, fallback 없음",
+                                       listing.name, lawd_cd)
+            else:
+                logger.warning("  [skip] %s: lawd_cd 없음 (region=%s, code=%s)",
+                              listing.name, listing.region, listing.region_code)
 
     # Step 2: Analyze (housing only)
     from src.housing.analyzer.scorer import calculate_scores_batch

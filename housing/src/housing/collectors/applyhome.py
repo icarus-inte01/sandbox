@@ -68,8 +68,10 @@ class ApplyhomeCollector(BaseCollector):
             return self._mock_collect(region)
 
         if not self.client._service_key or self.client._service_key.startswith("${"):
-            logger.warning("DATA_GO_KR_API_KEY not configured. Falling back to mock data.")
-            return self._mock_collect(region)
+            raise RuntimeError(
+                "DATA_GO_KR_API_KEY not configured. "
+                "Set DATA_GO_KR_API_KEY env var or use mock=True (--mock) explicitly."
+            )
 
         try:
             now = datetime.now()
@@ -156,7 +158,7 @@ class ApplyhomeCollector(BaseCollector):
             return result
         except Exception as e:
             logger.error("Applyhome API call failed: %s", e)
-            return self._mock_collect(region)
+            raise
 
     def _mock_collect(self, region: Optional[str] = None) -> list[SaleListing]:
         """Mock 분양 데이터를 생성합니다."""
