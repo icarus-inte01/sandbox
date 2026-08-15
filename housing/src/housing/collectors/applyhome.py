@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
@@ -106,23 +107,22 @@ class ApplyhomeCollector(BaseCollector):
 
             model_items: list[dict] = []
             if target_keys:
-                model_params = {"page": 1, "perPage": 100}
+                # model 엔드포인트도 cond[HOUSE_MANAGE_NO::EQ] 서버 필터 지원 → 순차 페이지 스캔 대신 병렬 개별 조회
+                def _fetch_models(key: str) -> list[dict]:
+                    result = self.client.fetch(API_MDL, {
+                        "page": 1, "perPage": 100,
+                        "cond[HOUSE_MANAGE_NO::EQ]": key,
+                    })
+                    return result.get("data", [])
+
                 try:
-                    found_keys: set[str] = set()
-                    for page in range(1, 31):
-                        model_params["page"] = page
-                        result = self.client.fetch(API_MDL, dict(model_params))
-                        data = result.get("data", [])
-                        if not data:
-                            break
-                        model_items.extend(data)
-                        for m in data:
-                            k = m.get("HOUSE_MANAGE_NO", "")
-                            if k in target_keys:
-                                found_keys.add(k)
-                        if found_keys == target_keys:
-                            logger.info("Model detail 커버: %d개 단지, page %d에서 완료", len(target_keys), page)
-                            break
+                    with ThreadPoolExecutor(max_workers=8) as executor:
+                        for batch in executor.map(_fetch_models, sorted(target_keys)):
+                            model_items.extend(batch)
+                    logger.info(
+                        "Model detail 커버: %d개 단지, cond 필터 병렬 조회 %d건",
+                        len(target_keys), len(model_items),
+                    )
                 except Exception:
                     logger.warning("Model endpoint failed, proceeding without price data.")
                     model_items = []
