@@ -205,6 +205,10 @@ class OdcloudClient:
 
     def _get_total_count(self, response: dict[str, Any]) -> Optional[int]:
         """응답에서 전체 결과 수를 추출합니다."""
+        # ODCloud 형식: matchCount가 cond 필터 적용 후 실제 결과 수
+        # (totalCount는 필터와 무관한 전체 건수이므로 필터 사용 시 페이지네이션 기준으로 부적합)
+        if "matchCount" in response:
+            return int(response["matchCount"])
         # ODCloud 형식
         if "totalCount" in response:
             return int(response["totalCount"])
