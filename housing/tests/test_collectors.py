@@ -33,6 +33,37 @@ class TestApplyhomeCollector:
             assert hasattr(l, 'price')
             assert hasattr(l, 'units')
 
+    def test_estimate_status_reception_period(self):
+        """접수기간(RCEPT_BGNDE/ENDDE) 기준 상태 판정."""
+        from src.housing.models import SaleStatus
+        from datetime import datetime, timedelta
+        c = ApplyhomeCollector()
+        today = datetime.now()
+        d = lambda days: (today + timedelta(days=days)).strftime("%Y-%m-%d")
+
+        # 접수 시작 전 → PLANNED
+        assert c._estimate_status(d(-10), "테스트단지", d(3), d(5)) == SaleStatus.PLANNED
+        # 접수 진행 중 → OPEN
+        assert c._estimate_status(d(-10), "테스트단지", d(-1), d(1)) == SaleStatus.OPEN
+        # 접수 종료 → CLOSED
+        assert c._estimate_status(d(-10), "테스트단지", d(-5), d(-1)) == SaleStatus.CLOSED
+        # 접수 종료 + 미분양 키워드 → UNSOLD
+        assert c._estimate_status(d(-10), "잔여세대 무순위", d(-5), d(-1)) == SaleStatus.UNSOLD
+
+    def test_estimate_status_fallback(self):
+        """접수기간 필드 없을 때 공고일 기준 fallback."""
+        from src.housing.models import SaleStatus
+        from datetime import datetime, timedelta
+        c = ApplyhomeCollector()
+        today = datetime.now()
+        d = lambda days: (today + timedelta(days=days)).strftime("%Y-%m-%d")
+
+        assert c._estimate_status(d(5), "테스트단지") == SaleStatus.PLANNED
+        assert c._estimate_status(d(-10), "테스트단지") == SaleStatus.OPEN
+        assert c._estimate_status(d(-60), "테스트단지") == SaleStatus.CLOSED
+        assert c._estimate_status(d(-400), "미분양 아파트") == SaleStatus.UNSOLD
+        assert c._estimate_status("", "테스트단지") == SaleStatus.PLANNED
+
 
 class TestLHCollector:
     def test_mock_collect_land(self):

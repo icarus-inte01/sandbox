@@ -20,6 +20,10 @@ API_BASE = "https://api.odcloud.kr/api/ApplyhomeInfoDetailSvc/v1"
 API_LIST = f"{API_BASE}/getAPTLttotPblancDetail"
 API_MDL = f"{API_BASE}/getAPTLttotPblancMdl"
 
+# 서버 cond[HOUSE_NM::LIKE] 미분양 검색 키워드
+# (잔여/취소분/보류지 매칭; 미분양·무순위 명칭은 현재 API 데이터에 0건이라 제외)
+UNSOLD_SEARCH_KEYWORDS = ("잔여", "취소", "보류지")
+
 
 def _sum_households(model: dict[str, Any]) -> int:
     return (
@@ -57,21 +61,45 @@ class ApplyhomeCollector(BaseCollector):
         try:
             now = datetime.now()
 
-            params = {"page": 1, "perPage": 100}
-            # cond[RCRIT_PBLANC_DE::GTE] 필터는 이 API에서 미지원 (totalCount=0)
-            # → 전체 데이터를 받아서 Python 단에서 날짜 필터링
-            # PublicDataReader 라이브러리도 동일 방식 사용
-            if region:
-                params["cond[SUBSCRPT_AREA_CODE_NM::EQ]"] = region
+            # 서버 측 cond 필터로 접수 가능한 항목만 조회 (전체 2,851건 중 대상만 수신)
+            # 1) 접수 가능(PLANNED+OPEN): 접수종료일(RCEPT_ENDDE)이 오늘 이후
+            # 2) 미분양 잔여분(UNSOLD): 공고일(RCRIT_PBLANC_DE) 365일 이내 + 이름 키워드
+            #    cond[HOUSE_NM::LIKE]는 단일 키워드만 매칭되므로 키워드별 개별 호출 (AND 결합 확인됨)
+            today = now.strftime("%Y-%m-%d")
+            cutoff_365 = (now - timedelta(days=365)).strftime("%Y-%m-%d")
 
-            detail_items = self.client.fetch_all(API_LIST, params, max_pages=5)
+            def _collect_with(params: dict) -> list[dict]:
+                if region:
+                    params["cond[SUBSCRPT_AREA_CODE::EQ]"] = region
+                return self.client.fetch_all(API_LIST, params, max_pages=5)
 
-            # Python 단에서 최근 90일 이내 공고만 유지
-            _cutoff_date = (now - timedelta(days=90)).strftime("%Y-%m-%d")
-            detail_items = [
-                item for item in detail_items
-                if (item.get("RCRIT_PBLANC_DE") or "") >= _cutoff_date
-            ]
+            # 1) 접수 가능: 접수종료일이 오늘 이후 (PLANNED + OPEN)
+            detail_items = _collect_with({
+                "page": 1, "perPage": 100,
+                "cond[RCEPT_ENDDE::GTE]": today,
+            })
+
+            # 2) 미분양 잔여분: 공고 365일 이내 + 이름 키워드별 LIKE
+            for keyword in UNSOLD_SEARCH_KEYWORDS:
+                detail_items.extend(_collect_with({
+                    "page": 1, "perPage": 100,
+                    "cond[RCRIT_PBLANC_DE::GTE]": cutoff_365,
+                    "cond[HOUSE_NM::LIKE]": keyword,
+                }))
+
+            # 접수가능 쿼리와 미분양 쿼리 간 중복 제거 (HOUSE_MANAGE_NO 기준)
+            seen: set[str] = set()
+            unique_items: list[dict] = []
+            for item in detail_items:
+                key = item.get("HOUSE_MANAGE_NO", "")
+                if key and key in seen:
+                    continue
+                if key:
+                    seen.add(key)
+                unique_items.append(item)
+            detail_items = unique_items
+
+            logger.info("서버 필터 조회: 접수가능+미분양 %d건", len(detail_items))
 
             # detail Items의 house_manage_no만 model에서 조회
             target_keys = {item.get("HOUSE_MANAGE_NO", "") for item in detail_items if item.get("HOUSE_MANAGE_NO")}
@@ -149,6 +177,8 @@ class ApplyhomeCollector(BaseCollector):
                 "house_nm": "래미안 원펜타스",
                 "suply_location": "서울특별시 서초구",
                 "rcrit_pblanc_de": "2026-07-15",
+                "rcpt_bgnde": "2026-08-24",
+                "rcpt_endde": "2026-08-26",
                 "total_suply_hs_shl": 1024,
                 "suply_amount": 85000,
                 "builder": "삼성물산",
@@ -165,6 +195,8 @@ class ApplyhomeCollector(BaseCollector):
                 "house_nm": "힐스테이트 도곡",
                 "suply_location": "서울특별시 강남구",
                 "rcrit_pblanc_de": "2026-07-22",
+                "rcpt_bgnde": "2026-08-24",
+                "rcpt_endde": "2026-08-27",
                 "total_suply_hs_shl": 320,
                 "suply_amount": 95000,
                 "builder": "현대건설",
@@ -180,6 +212,8 @@ class ApplyhomeCollector(BaseCollector):
                 "house_nm": "자이 더 포레",
                 "suply_location": "경기도 성남시 분당구",
                 "rcrit_pblanc_de": "2026-08-01",
+                "rcpt_bgnde": "2026-08-14",
+                "rcpt_endde": "2026-08-16",
                 "total_suply_hs_shl": 680,
                 "suply_amount": 72000,
                 "builder": "GS건설",
@@ -195,6 +229,8 @@ class ApplyhomeCollector(BaseCollector):
                 "house_nm": "e편한세상 평택",
                 "suply_location": "경기도 평택시",
                 "rcrit_pblanc_de": "2026-07-10",
+                "rcpt_bgnde": "2026-08-12",
+                "rcpt_endde": "2026-08-13",
                 "total_suply_hs_shl": 950,
                 "suply_amount": 42000,
                 "builder": "대림산업",
@@ -211,6 +247,8 @@ class ApplyhomeCollector(BaseCollector):
                 "house_nm": "포레나 천안",
                 "suply_location": "충청남도 천안시",
                 "rcrit_pblanc_de": "2026-07-05",
+                "rcpt_bgnde": "2026-08-10",
+                "rcpt_endde": "2026-08-11",
                 "total_suply_hs_shl": 450,
                 "suply_amount": 32000,
                 "builder": "한화건설",
@@ -325,8 +363,11 @@ class ApplyhomeCollector(BaseCollector):
         else:
             supply_type = SupplyType.APT
 
+        # RCRIT_PBLANC_DE: 공고일, RCEPT_BGNDE: 청약 접수 시작일, RCEPT_ENDDE: 청약 접수 종료일
         announcement_date = item.get("RCRIT_PBLANC_DE") or item.get("rcrit_pblanc_de") or ""
-        status = self._estimate_status(announcement_date, name)
+        reception_start = item.get("RCEPT_BGNDE") or item.get("rcpt_bgnde") or ""
+        reception_end = item.get("RCEPT_ENDDE") or item.get("rcpt_endde") or ""
+        status = self._estimate_status(announcement_date, name, reception_start, reception_end)
 
         region_name = REGION_CODE_MAP.get(region_code, "")
         if location and not region_name:
@@ -348,18 +389,41 @@ class ApplyhomeCollector(BaseCollector):
             units_info=units_info,
         )
 
-    def _estimate_status(self, announcement_date: str, name: str) -> SaleStatus:
-        """공고일 기준으로 분양상태를 추정합니다."""
+    def _estimate_status(
+        self,
+        announcement_date: str,
+        name: str,
+        reception_start: str = "",
+        reception_end: str = "",
+    ) -> SaleStatus:
+        """접수기간(RCEPT_BGNDE/ENDDE) 기준으로 분양상태를 판정합니다.
+
+        접수기간 필드가 있으면 실제 청약 접수 기간으로 판정하고,
+        없으면 공고일 기준 추정으로 fallback합니다.
+
+        판정 규칙 (접수기간 기준):
+            now < 시작일        → PLANNED (분양예정)
+            시작일 ≤ now ≤ 종료일 → OPEN    (접수 진행중)
+            now > 종료일        → CLOSED  (접수 마감, 미분양 키워드 시 UNSOLD)
+        """
+        start_dt = self._parse_date(reception_start)
+        end_dt = self._parse_date(reception_end)
+        if start_dt and end_dt:
+            now = datetime.now()
+            if now < start_dt:
+                return SaleStatus.PLANNED
+            if now <= end_dt:
+                return SaleStatus.OPEN
+            if self._is_unsold(name):
+                return SaleStatus.UNSOLD
+            return SaleStatus.CLOSED
+
         if not announcement_date:
             return SaleStatus.PLANNED
 
-        try:
-            announcement = datetime.strptime(announcement_date, "%Y-%m-%d")
-        except ValueError:
-            try:
-                announcement = datetime.strptime(announcement_date, "%Y%m%d")
-            except ValueError:
-                return SaleStatus.PLANNED
+        announcement = self._parse_date(announcement_date)
+        if not announcement:
+            return SaleStatus.PLANNED
 
         now = datetime.now()
         days_diff = (now - announcement).days
@@ -371,7 +435,21 @@ class ApplyhomeCollector(BaseCollector):
         elif days_diff < 365:
             return SaleStatus.CLOSED
         else:
-            unsold_keywords = ["미분양", "잔여", "무순위", "취소", "보류지"]
-            if any(kw in name for kw in unsold_keywords):
+            if self._is_unsold(name):
                 return SaleStatus.UNSOLD
             return SaleStatus.CLOSED
+
+    @staticmethod
+    def _parse_date(value: str) -> Optional[datetime]:
+        value = str(value).strip() if value else ""
+        for fmt in ("%Y-%m-%d", "%Y%m%d"):
+            try:
+                return datetime.strptime(value, fmt)
+            except ValueError:
+                continue
+        return None
+
+    @staticmethod
+    def _is_unsold(name: str) -> bool:
+        unsold_keywords = ["미분양", "잔여", "무순위", "취소", "보류지"]
+        return any(kw in name for kw in unsold_keywords)
