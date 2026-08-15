@@ -9,6 +9,7 @@ import logging
 import os
 import smtplib
 import sys
+import time
 from datetime import datetime
 from email.mime.text import MIMEText
 from typing import Any, Optional
@@ -207,13 +208,22 @@ def cmd_report(args: argparse.Namespace, listings: list[SaleListing]) -> None:
     print(f"Report saved: {output_path}")
 
 
+def _log_step_time(step: str, t_start: float) -> float:
+    """단계 소요 시간을 로깅하고 현재 시각을 반환."""
+    elapsed = time.monotonic() - t_start
+    logger.info("  [timing] %-38s %7.2fs", step, elapsed)
+    return time.monotonic()
+
+
 def cmd_all(args: argparse.Namespace) -> None:
     """전체 파이프라인 실행 (collect → analyze → report)."""
     logger.info("=== E2E Pipeline Start ===")
+    t0 = time.monotonic()
 
     # Step 1: Collect
     all_listings = cmd_collect(args)
     logger.info("Total collected: %d listings", len(all_listings))
+    t_step = _log_step_time("Step 1: collect", t0)
 
     if not all_listings:
         logger.warning("No listings collected. Skipping analysis & report.")
@@ -241,13 +251,14 @@ def cmd_all(args: argparse.Namespace) -> None:
     housing_closed = [
         l for l in all_listings
         if l.supply_type != SupplyType.LAND
-        and l.status not in (SaleStatus.PLANNED, SaleStatus.OPEN)
+        and l.status not in (SaleStatus.PLANNED, SaleStatus.OPEN, SaleStatus.UNSOLD)
     ]
 
     land_listings = deduplicate_listings(land_listings)
 
     logger.info("  → 주택(분양예정/청약중/미분양): %d개, 주택(마감): %d개, 토지(중복제거후): %d개",
                 len(housing_active), len(housing_closed), len(land_listings))
+    t_step = _log_step_time("Step 1b: 분류/중복제거", t_step)
 
     config = Config()
 
@@ -256,6 +267,7 @@ def cmd_all(args: argparse.Namespace) -> None:
         from src.housing.analyzer.land_scorer import calculate_land_scores_batch
         land_listings = calculate_land_scores_batch(land_listings, config)
         logger.info("Scored %d land listings", len(land_listings))
+    t_step = _log_step_time("토지 스코어링", t_step)
 
     # 한국자산관리공사(onbid)와 LH 분리
     kamco_listings = [l for l in land_listings if l.source == "onbid"]
@@ -309,6 +321,7 @@ def cmd_all(args: argparse.Namespace) -> None:
         listing.lawd_cd = lawd_cd
         if lawd_cd:
             listing_lawd_cds.add(lawd_cd)
+    t_step = _log_step_time("Molit 1단계: 법정동코드 추출", t_step)
 
     # 2단계: 수집된 모든 법정동코드에 대해 실거래가 조회
     all_nearby_prices: dict[str, dict[str, Any]] = {}
@@ -322,6 +335,7 @@ def cmd_all(args: argparse.Namespace) -> None:
                            lawd_cd, prices["avg_price"], tc)
             else:
                 logger.warning("  -> nearby prices for %s: 0건 (months_back=3)", lawd_cd)
+    t_step = _log_step_time("Molit 2단계: 실거래가 조회(%d개 코드)" % len(listing_lawd_cds), t_step)
 
     LAWD_PREFIX_TO_DO: dict[str, str] = {
         "11": "서울특별시", "12": "전남광주통합특별시", "26": "부산광역시",
@@ -357,6 +371,7 @@ def cmd_all(args: argparse.Namespace) -> None:
                     all_nearby_prices[probe_lawd] = probe_prices
                     logger.info("    -> %s: avg=%d만원 (%d건)", probe_lawd,
                                probe_prices["avg_price"], probe_prices["trade_count"])
+    t_step = _log_step_time("Molit 2b: 시/도 probe fallback", t_step)
 
     sido_pool: dict[str, list[dict[str, Any]]] = {}
     for lawd_cd, prices in all_nearby_prices.items():
@@ -379,6 +394,7 @@ def cmd_all(args: argparse.Namespace) -> None:
                 "avg_price_per_area": total_area_price / total_trades,
                 "trade_count": total_trades,
             }
+    t_step = _log_step_time("Molit 2c: sido_fallback 계산", t_step)
 
     def _apply_market_price(listing: Any, price_data: dict[str, Any]) -> None:
         avg_price_per_area = price_data.get("avg_price_per_area", 0)
@@ -420,6 +436,7 @@ def cmd_all(args: argparse.Namespace) -> None:
             else:
                 logger.warning("  [skip] %s: lawd_cd 없음 (region=%s, code=%s)",
                               listing.name, listing.region, listing.region_code)
+    t_step = _log_step_time("Molit 3단계: 실거래가 매칭", t_step)
 
     # Step 2: Analyze (housing only)
     from src.housing.analyzer.scorer import calculate_scores_batch
@@ -430,13 +447,17 @@ def cmd_all(args: argparse.Namespace) -> None:
     top = top_n(ranked, n=20)
 
     logger.info("Analyzed: %d active listings, showing top %d", len(ranked), len(top))
+    t_step = _log_step_time("Step 2: Analyze/ranking", t_step)
 
     # Step 3: Report
     from src.housing.reporter.email_renderer import render_report
     report_date = datetime.now().strftime("%Y-%m-%d")
     html = render_report(top, report_date, kamco_listings=kamco_listings, lh_listings=lh_listings)
+    t_step = _log_step_time("Step 3: Report 렌더링", t_step)
 
     _write_and_maybe_send(html, args)
+
+    logger.info("  [timing] %-38s %7.2fs", "TOTAL (E2E)", time.monotonic() - t0)
 
 
 def _write_and_maybe_send(html: str, args: argparse.Namespace) -> None:
