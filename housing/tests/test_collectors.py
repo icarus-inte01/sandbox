@@ -17,10 +17,10 @@ class TestApplyhomeCollector:
         assert all(l.name for l in listings)
 
     def test_mock_region_filter(self):
-        """지역 필터 적용."""
+        """지역 필터 적용 (청약홈 3-digit SUBSCRPT_AREA_CODE)."""
         c = ApplyhomeCollector()
-        seoul_listings = c.collect(region="11", mock=True)
-        busan_listings = c.collect(region="26", mock=True)
+        seoul_listings = c.collect(region="100", mock=True)
+        busan_listings = c.collect(region="600", mock=True)
         assert len(seoul_listings) >= len(busan_listings)
 
     def test_model_conversion(self):

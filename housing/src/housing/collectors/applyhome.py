@@ -20,23 +20,23 @@ API_LIST = f"{API_BASE}/getAPTLttotPblancDetail"
 API_MDL = f"{API_BASE}/getAPTLttotPblancMdl"
 
 REGION_CODE_MAP: dict[str, str] = {
-    "11": "서울특별시",
-    "26": "부산광역시",
-    "27": "대구광역시",
-    "28": "인천광역시",
-    "29": "광주광역시",
-    "30": "대전광역시",
-    "31": "울산광역시",
-    "36": "세종특별자치시",
-    "41": "경기도",
-    "42": "강원도",
-    "43": "충청북도",
-    "44": "충청남도",
-    "45": "전라북도",
-    "46": "전라남도",
-    "47": "경상북도",
-    "48": "경상남도",
-    "50": "제주특별자치도",
+    "100": "서울특별시",
+    "200": "강원특별자치도",
+    "300": "대전광역시",
+    "312": "충청남도",
+    "338": "세종특별자치시",
+    "360": "충청북도",
+    "400": "인천광역시",
+    "410": "경기도",
+    "500": "전남광주통합특별시",
+    "513": "전라남도",
+    "560": "전북특별자치도",
+    "600": "부산광역시",
+    "621": "경상남도",
+    "680": "울산광역시",
+    "690": "제주특별자치도",
+    "700": "대구광역시",
+    "712": "경상북도",
 }
 
 
@@ -171,7 +171,7 @@ class ApplyhomeCollector(BaseCollector):
                 "total_suply_hs_shl": 1024,
                 "suply_amount": 85000,
                 "builder": "삼성물산",
-                "region_code": "11",
+                "region_code": "100",
                 "pblanc_knd": "아파트",
                 "units_info": [
                     {"model_no": "1", "house_type": "전용 59", "supply_area": "59.0", "price": 78000, "households": 512},
@@ -187,7 +187,7 @@ class ApplyhomeCollector(BaseCollector):
                 "total_suply_hs_shl": 320,
                 "suply_amount": 95000,
                 "builder": "현대건설",
-                "region_code": "11",
+                "region_code": "100",
                 "pblanc_knd": "아파트",
                 "units_info": [
                     {"model_no": "1", "house_type": "전용 59", "supply_area": "59.0", "price": 82000, "households": 160},
@@ -202,7 +202,7 @@ class ApplyhomeCollector(BaseCollector):
                 "total_suply_hs_shl": 680,
                 "suply_amount": 72000,
                 "builder": "GS건설",
-                "region_code": "41",
+                "region_code": "410",
                 "pblanc_knd": "아파트",
                 "units_info": [
                     {"model_no": "1", "house_type": "전용 59", "supply_area": "59.0", "price": 65000, "households": 340},
@@ -217,7 +217,7 @@ class ApplyhomeCollector(BaseCollector):
                 "total_suply_hs_shl": 950,
                 "suply_amount": 42000,
                 "builder": "대림산업",
-                "region_code": "41",
+                "region_code": "410",
                 "pblanc_knd": "아파트",
                 "units_info": [
                     {"model_no": "1", "house_type": "전용 59", "supply_area": "59.0", "price": 38000, "households": 475},
@@ -233,7 +233,7 @@ class ApplyhomeCollector(BaseCollector):
                 "total_suply_hs_shl": 450,
                 "suply_amount": 32000,
                 "builder": "한화건설",
-                "region_code": "44",
+                "region_code": "312",
                 "pblanc_knd": "아파트",
                 "units_info": [
                     {"model_no": "1", "house_type": "전용 59", "supply_area": "59.0", "price": 28000, "households": 270},
@@ -249,7 +249,7 @@ class ApplyhomeCollector(BaseCollector):
                 "total_suply_hs_shl": 120,
                 "suply_amount": 18000,
                 "builder": "세경종합건설",
-                "region_code": "45",
+                "region_code": "560",
                 "pblanc_knd": "아파트",
                 "units_info": [
                     {"model_no": "1", "house_type": "전용 59", "supply_area": "59.0", "price": 16500, "households": 70},
@@ -265,7 +265,7 @@ class ApplyhomeCollector(BaseCollector):
                 "total_suply_hs_shl": 85,
                 "suply_amount": 28000,
                 "builder": "양우건설",
-                "region_code": "50",
+                "region_code": "500",
                 "pblanc_knd": "아파트",
                 "units_info": [
                     {"model_no": "1", "house_type": "전용 59", "supply_area": "59.0", "price": 25500, "households": 50},
@@ -281,7 +281,7 @@ class ApplyhomeCollector(BaseCollector):
                 "total_suply_hs_shl": 45,
                 "suply_amount": 52000,
                 "builder": "GS건설",
-                "region_code": "11",
+                "region_code": "100",
                 "pblanc_knd": "아파트",
                 "units_info": [
                     {"model_no": "1", "house_type": "전용 59", "supply_area": "59.0", "price": 48000, "households": 25},
@@ -297,7 +297,7 @@ class ApplyhomeCollector(BaseCollector):
                 "total_suply_hs_shl": 320,
                 "suply_amount": 35000,
                 "builder": "한국토지주택공사",
-                "region_code": "41",
+                "region_code": "410",
                 "pblanc_knd": "공공분양",
                 "units_info": [
                     {"model_no": "1", "house_type": "전용 51", "supply_area": "51.0", "price": 28000, "households": 160},
@@ -347,7 +347,7 @@ class ApplyhomeCollector(BaseCollector):
         announcement_date = item.get("RCRIT_PBLANC_DE") or item.get("rcrit_pblanc_de") or ""
         status = self._estimate_status(announcement_date, name)
 
-        region_name = REGION_CODE_MAP.get(region_code[:2], "")
+        region_name = REGION_CODE_MAP.get(region_code, "")
         if location and not region_name:
             region_name = location.split()[0] if location else ""
 
