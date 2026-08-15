@@ -9,6 +9,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
+from src.housing.analyzer.region_data import REGION_CODE_MAP
 from src.housing.collectors.base import BaseCollector
 from src.housing.models import SaleListing, SupplyType, SaleStatus
 
@@ -18,26 +19,6 @@ logger = logging.getLogger(__name__)
 API_BASE = "https://api.odcloud.kr/api/ApplyhomeInfoDetailSvc/v1"
 API_LIST = f"{API_BASE}/getAPTLttotPblancDetail"
 API_MDL = f"{API_BASE}/getAPTLttotPblancMdl"
-
-REGION_CODE_MAP: dict[str, str] = {
-    "100": "서울특별시",
-    "200": "강원특별자치도",
-    "300": "대전광역시",
-    "312": "충청남도",
-    "338": "세종특별자치시",
-    "360": "충청북도",
-    "400": "인천광역시",
-    "410": "경기도",
-    "500": "전남광주통합특별시",
-    "513": "전라남도",
-    "560": "전북특별자치도",
-    "600": "부산광역시",
-    "621": "경상남도",
-    "680": "울산광역시",
-    "690": "제주특별자치도",
-    "700": "대구광역시",
-    "712": "경상북도",
-}
 
 
 def _sum_households(model: dict[str, Any]) -> int:

@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 from src.housing.analyzer.brand_scores import get_brand_score
 from src.housing.analyzer.price_comparator import score_from_discount
-from src.housing.analyzer.region_data import get_region_score
+from src.housing.analyzer.region_data import REGION_CODE_MAP, get_region_score
 from src.housing.config import Config
 from src.housing.models import SaleListing
 
@@ -127,10 +127,13 @@ def _get_discount_score(listing: SaleListing) -> float:
 def _get_transit_score(listing: SaleListing, overrides: Optional[dict[str, float]] = None) -> float:
     """교통/입지 점수 (weight 0.30).
 
-    region 정보를 기반으로 지역 점수를 조회합니다.
+    region_code(청약홈 3자리)가 있으면 코드 → 시/도 이름으로 정확히 조회하고,
+    없으면(LH/onbid) 주소 문자열 파싱으로 fallback합니다.
     """
-    base = get_region_score(listing.region, overrides)
-    return base
+    sido = REGION_CODE_MAP.get(listing.region_code or "", "")
+    if sido:
+        return get_region_score(sido, overrides)
+    return get_region_score(listing.region, overrides)
 
 
 def _get_brand_score(listing: SaleListing, overrides: Optional[dict[str, float]] = None) -> float:
