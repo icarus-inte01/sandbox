@@ -403,12 +403,18 @@ def cmd_all(args: argparse.Namespace) -> None:
             return
         listing.market_price = int(price_data.get("avg_price", 0))
         listing.market_price_per_m2 = avg_price_per_area
-        supply_prices_per_m2 = [
-            u["price_per_m2"] for u in listing.units_info
+        weighted = [
+            (u["price_per_m2"], u.get("households", 0)) for u in listing.units_info
             if u.get("price_per_m2", 0) > 0
         ]
-        if supply_prices_per_m2:
-            listing.supply_price_per_m2 = min(supply_prices_per_m2)
+        if weighted:
+            total_hh = sum(hh for _, hh in weighted)
+            if total_hh > 0:
+                listing.supply_price_per_m2 = (
+                    sum(p * hh for p, hh in weighted) / total_hh
+                )
+            else:
+                listing.supply_price_per_m2 = sum(p for p, _ in weighted) / len(weighted)
             rate = calculate_discount_rate_per_area(
                 listing.supply_price_per_m2, avg_price_per_area
             )

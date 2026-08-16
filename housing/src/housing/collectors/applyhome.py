@@ -112,6 +112,8 @@ class ApplyhomeCollector(BaseCollector):
 
             # 접수가능 쿼리와 잔여세대 쿼리 간 중복 제거 (HOUSE_MANAGE_NO 기준)
             active_count = len(detail_items)
+            general_keys = {item.get("HOUSE_MANAGE_NO", "") for item in detail_items if item.get("HOUSE_MANAGE_NO")}
+            remaining_keys = {item.get("HOUSE_MANAGE_NO", "") for item in remndr_items if item.get("HOUSE_MANAGE_NO")}
             seen: set[str] = set()
             unique_items: list[dict] = []
             for item in detail_items + remndr_items:
@@ -131,19 +133,25 @@ class ApplyhomeCollector(BaseCollector):
 
             model_items: list[dict] = []
             if target_keys:
-                # model 엔드포인트는 cond[HOUSE_MANAGE_NO::GTE] 연도필터 + perPage=10000으로 전수 1회 조회
-                # (실측: 일반 2,698건 / 잔여 1,304건 — 개별 병렬 44회 대신 2회로 전체 커버)
-                def _fetch_models(url: str) -> list[dict]:
+                # model 엔드포인트는 cond[HOUSE_MANAGE_NO::GTE] 하한필터 + perPage=10000으로 1회 조회
+                # 하한 = 각 API 대상 단지의 최소 HOUSE_MANAGE_NO → target 전부 커버 보장
+                # 일반/잔여는 API가 다르므로 각 소스의 min을 해당 MODEL API에 적용
+                # (실측: 일반 2,698→122건 / 잔여 1,304→37건)
+                def _fetch_models(url: str, min_key: str) -> list[dict]:
                     result = self.client.fetch(url, {
                         "page": 1, "perPage": 10000,
-                        "cond[HOUSE_MANAGE_NO::GTE]": "2025000000",
+                        "cond[HOUSE_MANAGE_NO::GTE]": min_key,
                     })
                     return result.get("data", [])
 
                 try:
-                    model_items = _fetch_models(API_MDL) + _fetch_models(API_REM_MDL)
+                    model_items = []
+                    if general_keys:
+                        model_items += _fetch_models(API_MDL, min(general_keys))
+                    if remaining_keys:
+                        model_items += _fetch_models(API_REM_MDL, min(remaining_keys))
                     logger.info(
-                        "Model detail 커버: %d개 단지, GTE 연도필터 조회 %d건",
+                        "Model detail 커버: %d개 단지, GTE 하한 조회 %d건",
                         len(target_keys), len(model_items),
                     )
                 except Exception:
