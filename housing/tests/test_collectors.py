@@ -47,8 +47,10 @@ class TestApplyhomeCollector:
         assert c._estimate_status(d(-10), "테스트단지", d(-1), d(1)) == SaleStatus.OPEN
         # 접수 종료 → CLOSED
         assert c._estimate_status(d(-10), "테스트단지", d(-5), d(-1)) == SaleStatus.CLOSED
-        # 접수 종료 + 미분양 키워드 → UNSOLD
+        # 접수 종료 + 미분양 키워드 → UNSOLD (일반 분양: 미분양 유지)
         assert c._estimate_status(d(-10), "잔여세대 무순위", d(-5), d(-1)) == SaleStatus.UNSOLD
+        # 접수 종료 + 잔여세대(unsold_hint) → CLOSED (선착순: 신청 불가)
+        assert c._estimate_status(d(-10), "강변역 센트럴 아이파크", d(-5), d(-1), unsold_hint=True) == SaleStatus.CLOSED
 
     def test_estimate_status_fallback(self):
         """접수기간 필드 없을 때 공고일 기준 fallback."""

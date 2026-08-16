@@ -91,17 +91,19 @@ def render_report(
     land_listings: Optional[list[SaleListing]] = None,
     kamco_listings: Optional[list[SaleListing]] = None,
     lh_listings: Optional[list[SaleListing]] = None,
+    remaining_listings: Optional[list[SaleListing]] = None,
 ) -> str:
     """유망도 리포트 HTML을 렌더링합니다.
 
     Args:
-        listings: 분양정보 리스트 (total_score 내림차순 정렬 권장)
+        listings: 일반 분양 리스트 (total_score 내림차순 정렬 권장)
         report_date: 보고서 일자 문자열
         title: 제목
         include_notes: 면책 문구 포함 여부
         land_listings: (deprecated) 토지/택지 분양 리스트
         kamco_listings: 한국자산관리공사 공매 토지 리스트
         lh_listings: LH 토지/택지 리스트
+        remaining_listings: 잔여세대(무순위/재공급) 리스트 — 일반 분양과 분리 표시
 
     Returns:
         렌더링된 HTML 문자열
@@ -109,8 +111,7 @@ def render_report(
     env = _get_env()
     template = env.get_template("report.html")
 
-    scored_listings = []
-    for listing in listings:
+    def _build_listing_dict(listing: SaleListing) -> dict:
         units_table = []
         avg_price_per_pyung = 0
         avg_weight = 0
@@ -139,11 +140,12 @@ def render_report(
         else:
             market_price_str = "-"
 
-        d = {
+        return {
             "name": listing.name,
             "region": listing.region,
             "supply_type": listing.supply_type,
             "supply_type_kr": _supply_type_kr(listing.supply_type),
+            "house_secd_nm": (listing.house_secd_nm or "").replace("불법행위 재공급", "재공급"),
             "status": listing.status,
             "status_kr": _status_kr(listing.status),
             "units": listing.units,
@@ -154,15 +156,15 @@ def render_report(
             "total_score": listing.total_score,
             "score_color": _score_color(listing.total_score),
             "source": listing.source,
-            "competition_rate": listing.competition_rate if listing.competition_rate else None,
             "transit_score": listing.transit_score,
             "brand_score": listing.brand_score,
-            "competition_score": listing.competition_score,
             "scale_score": listing.scale_score,
             "avg_price_per_pyung": round(avg_price_per_pyung / avg_weight) if avg_weight > 0 else 0,
             "units_table": units_table,
         }
-        scored_listings.append(d)
+
+    scored_listings = [_build_listing_dict(listing) for listing in listings]
+    remaining_data = [_build_listing_dict(listing) for listing in (remaining_listings or [])]
 
     def _build_land_dict(l):
         price_str = _krw_format(l.price) if l.price > 0 else "-"
@@ -211,6 +213,7 @@ def render_report(
         include_notes=include_notes,
         kamco_listings=kamco_data,
         lh_listings=lh_data,
+        remaining_listings=remaining_data,
     )
 
     # CSS 인라인화: Naver 메일 등 <style>을 제거하는 클라이언트 대응

@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
@@ -20,10 +19,36 @@ logger = logging.getLogger(__name__)
 API_BASE = "https://api.odcloud.kr/api/ApplyhomeInfoDetailSvc/v1"
 API_LIST = f"{API_BASE}/getAPTLttotPblancDetail"
 API_MDL = f"{API_BASE}/getAPTLttotPblancMdl"
+API_REM_DETAIL = f"{API_BASE}/getRemndrLttotPblancDetail"
+API_REM_MDL = f"{API_BASE}/getRemndrLttotPblancMdl"
 
-# 서버 cond[HOUSE_NM::LIKE] 미분양 검색 키워드
-# (잔여/취소분/보류지 매칭; 미분양·무순위 명칭은 현재 API 데이터에 0건이라 제외)
-UNSOLD_SEARCH_KEYWORDS = ("잔여", "취소", "보류지")
+# getAPTLttotPblancMdl 필드 명세 (APT 분양정보 주택형별 상세조회)
+# 출처: ~/기술문서_청약홈 분양정보 조회 서비스_260129.docx (상세기능 4)
+# 단지(HOUSE_MANAGE_NO) 1건 = 주택형(MODEL_NO) 수만큼 row 반환
+#   SUPLY_AR                공급면적 (㎡)
+#   LTTOT_TOP_AMOUNT        공급금액(분양최고금액) (단위: 만원)
+#   SUPLY_HSHLDCO           일반공급 세대수
+#   SPSPLY_HSHLDCO          특별공급 세대수
+#   MNYCH_HSHLDCO           특별공급-다자녀가구 세대수
+#   NWWDS_HSHLDCO           특별공급-신혼부부 세대수
+#   LFE_FRST_HSHLDCO        특별공급-생애최초 세대수
+#   OLD_PARNTS_SUPORT_HSHLDCO  특별공급-노부모부양 세대수
+#   INSTT_RECOMEND_HSHLDCO  특별공급-기관추천 세대수
+#   ETC_HSHLDCO             특별공급-기타 세대수
+#   TRANSR_INSTT_ENFSN_HSHLDCO 특별공급-이전기관 세대수
+#   YGMN_HSHLDCO            특별공급-청년 세대수 (공공주택만)
+#   NWBB_HSHLDCO            특별공급-신생아 세대수 (공공주택만)
+#   ※ 청년/신생아는 공공주택(HOUSE_DETAIL_SECD='03' & PUBLIC_HOUSE_SPCLW_APPLC_AT='Y')만 해당
+# 실측 검증: 목록의 TOT_SUPLY_HSHLDCO = SUPLY + SPSPLY + ETC
+#   → NWWDS/NWBB 등 세부 특별공급은 TOT에 미포함이므로 총세대수 합산 시 제외해야 함
+
+# getRemndrLttotPblancMdl 필드 명세 (APT 잔여세대 분양정보 주택형별 상세조회)
+# 출처: ~/기술문서_청약홈 분양정보 조회 서비스_260129.docx (상세기능 6)
+# 일반(getAPTLttotPblancMdl)과 동일 구조이나 세부 특별공급 필드 없음 (8개만 반환)
+#   SUPLY_AR                공급면적 (㎡)
+#   LTTOT_TOP_AMOUNT        공급금액(분양최고금액) (단위: 만원)
+#   SUPLY_HSHLDCO           일반공급 세대수
+#   SPSPLY_HSHLDCO          특별공급 세대수
 
 
 def _sum_households(model: dict[str, Any]) -> int:
@@ -62,17 +87,16 @@ class ApplyhomeCollector(BaseCollector):
         try:
             now = datetime.now()
 
-            # 서버 측 cond 필터로 접수 가능한 항목만 조회 (전체 2,851건 중 대상만 수신)
-            # 1) 접수 가능(PLANNED+OPEN): 접수종료일(RCEPT_ENDDE)이 오늘 이후
-            # 2) 미분양 잔여분(UNSOLD): 공고일(RCRIT_PBLANC_DE) 365일 이내 + 이름 키워드
-            #    cond[HOUSE_NM::LIKE]는 단일 키워드만 매칭되므로 키워드별 개별 호출 (AND 결합 확인됨)
+            # 서버 측 cond 필터로 대상 항목만 조회
+            # 1) 접수가능(PLANNED+OPEN): 접수종료일(RCEPT_ENDDE)이 오늘 이후 → getAPTLttotPblancDetail
+            # 2) 잔여세대(UNSOLD): 접수종료일(SUBSCRPT_RCEPT_ENDDE)이 오늘 이후 → getRemndrLttotPblancDetail
+            #    (무순위/재공급은 선착순 접수라 접수 마감 후엔 신청 불가 → 서버에서 제외)
             today = now.strftime("%Y-%m-%d")
-            cutoff_365 = (now - timedelta(days=365)).strftime("%Y-%m-%d")
 
-            def _collect_with(params: dict) -> list[dict]:
+            def _collect_with(params: dict, url: str = API_LIST) -> list[dict]:
                 if region:
                     params["cond[SUBSCRPT_AREA_CODE::EQ]"] = region
-                return self.client.fetch_all(API_LIST, params, max_pages=5)
+                return self.client.fetch_all(url, params, max_pages=5)
 
             # 1) 접수 가능: 접수종료일이 오늘 이후 (PLANNED + OPEN)
             detail_items = _collect_with({
@@ -80,18 +104,17 @@ class ApplyhomeCollector(BaseCollector):
                 "cond[RCEPT_ENDDE::GTE]": today,
             })
 
-            # 2) 미분양 잔여분: 공고 365일 이내 + 이름 키워드별 LIKE
-            for keyword in UNSOLD_SEARCH_KEYWORDS:
-                detail_items.extend(_collect_with({
-                    "page": 1, "perPage": 100,
-                    "cond[RCRIT_PBLANC_DE::GTE]": cutoff_365,
-                    "cond[HOUSE_NM::LIKE]": keyword,
-                }))
+            # 2) 잔여세대: 무순위/재공급 등 미분양 전용 API (접수 마감 건 제외)
+            remndr_items = _collect_with({
+                "page": 1, "perPage": 100,
+                "cond[SUBSCRPT_RCEPT_ENDDE::GTE]": today,
+            }, url=API_REM_DETAIL)
 
-            # 접수가능 쿼리와 미분양 쿼리 간 중복 제거 (HOUSE_MANAGE_NO 기준)
+            # 접수가능 쿼리와 잔여세대 쿼리 간 중복 제거 (HOUSE_MANAGE_NO 기준)
+            active_count = len(detail_items)
             seen: set[str] = set()
             unique_items: list[dict] = []
-            for item in detail_items:
+            for item in detail_items + remndr_items:
                 key = item.get("HOUSE_MANAGE_NO", "")
                 if key and key in seen:
                     continue
@@ -100,27 +123,27 @@ class ApplyhomeCollector(BaseCollector):
                 unique_items.append(item)
             detail_items = unique_items
 
-            logger.info("서버 필터 조회: 접수가능+미분양 %d건", len(detail_items))
+            logger.info("서버 필터 조회: 접수가능 %d건, 잔여세대 %d건 → 중복제거 후 %d건",
+                        active_count, len(remndr_items), len(unique_items))
 
             # detail Items의 house_manage_no만 model에서 조회
             target_keys = {item.get("HOUSE_MANAGE_NO", "") for item in detail_items if item.get("HOUSE_MANAGE_NO")}
 
             model_items: list[dict] = []
             if target_keys:
-                # model 엔드포인트도 cond[HOUSE_MANAGE_NO::EQ] 서버 필터 지원 → 순차 페이지 스캔 대신 병렬 개별 조회
-                def _fetch_models(key: str) -> list[dict]:
-                    result = self.client.fetch(API_MDL, {
-                        "page": 1, "perPage": 100,
-                        "cond[HOUSE_MANAGE_NO::EQ]": key,
+                # model 엔드포인트는 cond[HOUSE_MANAGE_NO::GTE] 연도필터 + perPage=10000으로 전수 1회 조회
+                # (실측: 일반 2,698건 / 잔여 1,304건 — 개별 병렬 44회 대신 2회로 전체 커버)
+                def _fetch_models(url: str) -> list[dict]:
+                    result = self.client.fetch(url, {
+                        "page": 1, "perPage": 10000,
+                        "cond[HOUSE_MANAGE_NO::GTE]": "2025000000",
                     })
                     return result.get("data", [])
 
                 try:
-                    with ThreadPoolExecutor(max_workers=8) as executor:
-                        for batch in executor.map(_fetch_models, sorted(target_keys)):
-                            model_items.extend(batch)
+                    model_items = _fetch_models(API_MDL) + _fetch_models(API_REM_MDL)
                     logger.info(
-                        "Model detail 커버: %d개 단지, cond 필터 병렬 조회 %d건",
+                        "Model detail 커버: %d개 단지, GTE 연도필터 조회 %d건",
                         len(target_keys), len(model_items),
                     )
                 except Exception:
@@ -133,9 +156,16 @@ class ApplyhomeCollector(BaseCollector):
                 if key:
                     models_by_house.setdefault(key, []).append(m)
 
+            # 잔여세대(무순위/재공급) 항목은 이름에 키워드가 없어도 UNSOLD로 판정해야 함
+            remndr_keys = {item.get("HOUSE_MANAGE_NO", "") for item in remndr_items}
+
             result: list[SaleListing] = []
             for item in detail_items:
-                listing = self._to_listing(item)
+                listing = self._to_listing(
+                    item,
+                    unsold_hint=item.get("HOUSE_MANAGE_NO", "") in remndr_keys,
+                    is_remaining=item.get("HOUSE_MANAGE_NO", "") in remndr_keys,
+                )
                 key = item.get("HOUSE_MANAGE_NO", "")
                 models = models_by_house.get(key, [])
                 if models:
@@ -270,6 +300,8 @@ class ApplyhomeCollector(BaseCollector):
                 "builder": "세경종합건설",
                 "region_code": "560",
                 "pblanc_knd": "아파트",
+                "HOUSE_SECD_NM": "무순위",
+                "is_remaining": True,
                 "units_info": [
                     {"model_no": "1", "house_type": "전용 59", "supply_area": "59.0", "price": 16500, "households": 70},
                     {"model_no": "2", "house_type": "전용 84", "supply_area": "84.0", "price": 19500, "households": 50},
@@ -286,6 +318,8 @@ class ApplyhomeCollector(BaseCollector):
                 "builder": "양우건설",
                 "region_code": "500",
                 "pblanc_knd": "아파트",
+                "HOUSE_SECD_NM": "불법행위 재공급",
+                "is_remaining": True,
                 "units_info": [
                     {"model_no": "1", "house_type": "전용 59", "supply_area": "59.0", "price": 25500, "households": 50},
                     {"model_no": "2", "house_type": "전용 84", "supply_area": "84.0", "price": 31000, "households": 35},
@@ -302,6 +336,8 @@ class ApplyhomeCollector(BaseCollector):
                 "builder": "GS건설",
                 "region_code": "100",
                 "pblanc_knd": "아파트",
+                "HOUSE_SECD_NM": "무순위",
+                "is_remaining": True,
                 "units_info": [
                     {"model_no": "1", "house_type": "전용 59", "supply_area": "59.0", "price": 48000, "households": 25},
                     {"model_no": "2", "house_type": "전용 84", "supply_area": "84.0", "price": 55000, "households": 20},
@@ -318,6 +354,8 @@ class ApplyhomeCollector(BaseCollector):
                 "builder": "한국토지주택공사",
                 "region_code": "410",
                 "pblanc_knd": "공공분양",
+                "HOUSE_SECD_NM": "무순위",
+                "is_remaining": True,
                 "units_info": [
                     {"model_no": "1", "house_type": "전용 51", "supply_area": "51.0", "price": 28000, "households": 160},
                     {"model_no": "2", "house_type": "전용 59", "supply_area": "59.0", "price": 32000, "households": 160},
@@ -332,7 +370,28 @@ class ApplyhomeCollector(BaseCollector):
                 if item.get("region_code", "").startswith(region_prefix)
             ]
 
-        result = [self._to_listing(item) for item in mock_data]
+        today = datetime.now()
+        day = lambda offset: (today + timedelta(days=offset)).strftime("%Y-%m-%d")
+        mock_reception = {
+            "2025004001": (day(-1), day(1)),
+            "2025002003": (day(-1), day(1)),
+            "2025003010": (day(-10), day(-9)),
+            "2025001022": (day(-20), day(-19)),
+        }
+        for item in mock_data:
+            if item.get("is_remaining"):
+                bgnde, endde = mock_reception.get(item.get("pblanc_no"), (day(-1), day(1)))
+                item["SUBSCRPT_RCEPT_BGNDE"] = bgnde
+                item["SUBSCRPT_RCEPT_ENDDE"] = endde
+
+        result = [
+            self._to_listing(
+                item,
+                unsold_hint=item.get("is_remaining", False),
+                is_remaining=item.get("is_remaining", False),
+            )
+            for item in mock_data
+        ]
         for listing in result:
             for u in listing.units_info:
                 area = u.get("supply_area")
@@ -346,13 +405,13 @@ class ApplyhomeCollector(BaseCollector):
                         pass
         return result
 
-    def _to_listing(self, item: dict[str, Any]) -> SaleListing:
+    def _to_listing(self, item: dict[str, Any], unsold_hint: bool = False, is_remaining: bool = False) -> SaleListing:
         """API 응답 아이템을 SaleListing으로 변환합니다."""
         name = item.get("HOUSE_NM") or item.get("house_nm") or "알 수 없음"
         location = item.get("HSSPLY_ADRES") or item.get("suply_location") or ""
         units = int(item.get("TOT_SUPLY_HSHLDCO") or item.get("total_suply_hs_shl") or 0)
         price = int(item.get("suply_amount", 0) or 0)
-        builder = item.get("CNSTRCT_ENTRPS_NM") or item.get("builder") or ""
+        builder = item.get("CNSTRCT_ENTRPS_NM") or item.get("BSNS_MBY_NM") or item.get("builder") or ""
         region_code = item.get("SUBSCRPT_AREA_CODE") or item.get("region_code") or ""
 
         house_type = item.get("HOUSE_SECD_NM") or item.get("HOUSE_DTL_SECD_NM") or item.get("pblanc_knd") or ""
@@ -364,10 +423,20 @@ class ApplyhomeCollector(BaseCollector):
             supply_type = SupplyType.APT
 
         # RCRIT_PBLANC_DE: 공고일, RCEPT_BGNDE: 청약 접수 시작일, RCEPT_ENDDE: 청약 접수 종료일
+        # 잔여세대 API는 SUBSCRPT_RCEPT_BGNDE/ENDDE (청약접수일) 사용
         announcement_date = item.get("RCRIT_PBLANC_DE") or item.get("rcrit_pblanc_de") or ""
-        reception_start = item.get("RCEPT_BGNDE") or item.get("rcpt_bgnde") or ""
-        reception_end = item.get("RCEPT_ENDDE") or item.get("rcpt_endde") or ""
-        status = self._estimate_status(announcement_date, name, reception_start, reception_end)
+        reception_start = (
+            item.get("RCEPT_BGNDE") or item.get("SUBSCRPT_RCEPT_BGNDE")
+            or item.get("rcpt_bgnde") or ""
+        )
+        reception_end = (
+            item.get("RCEPT_ENDDE") or item.get("SUBSCRPT_RCEPT_ENDDE")
+            or item.get("rcpt_endde") or ""
+        )
+        status = self._estimate_status(
+            announcement_date, name, reception_start, reception_end,
+            unsold_hint=unsold_hint,
+        )
 
         region_name = REGION_CODE_MAP.get(region_code, "")
         if location and not region_name:
@@ -380,9 +449,11 @@ class ApplyhomeCollector(BaseCollector):
             region=location or region_name,
             supply_type=supply_type,
             status=status,
+            is_remaining=is_remaining,
             units=units,
             price=price,
             builder=builder,
+            house_secd_nm=item.get("HOUSE_SECD_NM") or "",
             region_code=region_code,
             announcement_date=announcement_date,
             source="applyhome",
@@ -395,6 +466,7 @@ class ApplyhomeCollector(BaseCollector):
         name: str,
         reception_start: str = "",
         reception_end: str = "",
+        unsold_hint: bool = False,
     ) -> SaleStatus:
         """접수기간(RCEPT_BGNDE/ENDDE) 기준으로 분양상태를 판정합니다.
 
@@ -404,7 +476,10 @@ class ApplyhomeCollector(BaseCollector):
         판정 규칙 (접수기간 기준):
             now < 시작일        → PLANNED (분양예정)
             시작일 ≤ now ≤ 종료일 → OPEN    (접수 진행중)
-            now > 종료일        → CLOSED  (접수 마감, 미분양 키워드 시 UNSOLD)
+            now > 종료일        → CLOSED  (접수 마감)
+                - 일반 분양 중 이름에 미분양 키워드 → UNSOLD (미분양 유지)
+                - 잔여세대(unsold_hint) → CLOSED
+                  (잔여세대는 선착순 접수라 접수기간이 지나면 신청 불가)
         """
         start_dt = self._parse_date(reception_start)
         end_dt = self._parse_date(reception_end)
@@ -414,6 +489,8 @@ class ApplyhomeCollector(BaseCollector):
                 return SaleStatus.PLANNED
             if now <= end_dt:
                 return SaleStatus.OPEN
+            if unsold_hint:
+                return SaleStatus.CLOSED
             if self._is_unsold(name):
                 return SaleStatus.UNSOLD
             return SaleStatus.CLOSED
@@ -435,6 +512,8 @@ class ApplyhomeCollector(BaseCollector):
         elif days_diff < 365:
             return SaleStatus.CLOSED
         else:
+            if unsold_hint:
+                return SaleStatus.CLOSED
             if self._is_unsold(name):
                 return SaleStatus.UNSOLD
             return SaleStatus.CLOSED

@@ -276,12 +276,98 @@ table.units-table tbody tr:last-child td {
       </tbody>
     </table>
     <div style="margin:-8px 0 8px 0;padding:6px 10px;background:#f9fafb;border-radius:4px;font-size:11px;color:#6b7280;">
-      평가기준: 할인율(35%) + 교통입지(30%) + 브랜드(15%) + 경쟁률(15%) + 규모(5%)
+      평가기준: 할인율(41%) + 교통입지(35%) + 브랜드(18%) + 규모(6%)
     </div>
     {% else %}
     <p style="text-align:center;padding:40px 0;color:#9ca3af;font-size:15px;">
       현재 청약가능한 주택 분양정보가 없습니다.
     </p>
+    {% endif %}
+
+    {% if remaining_listings %}
+    <h3 style="margin:24px 0 4px 0;font-size:14px;color:#7c3aed;">🏚 잔여세대 (무순위/재공급) — 상위 {{ remaining_listings|length }}건</h3>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:28px;">순위</th>
+          <th style="width:38px;">유형</th>
+          <th class="text-left">단지명</th>
+          <th class="text-left">위치</th>
+          <th style="width:44px;">세대수</th>
+          <th style="width:58px;">평당분양가</th>
+          <th style="width:62px;">평당참고가</th>
+          <th style="width:40px;">할인율</th>
+          <th style="width:44px;">총점</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in remaining_listings %}
+        <tr class="{% if item.total_score and item.total_score >= 80 %}high-score{% elif item.total_score and item.total_score >= 60 %}mid-score{% endif %}">
+          <td>
+            <span class="rank-badge {% if loop.index == 1 %}rank-1{% elif loop.index == 2 %}rank-2{% elif loop.index == 3 %}rank-3{% else %}rank-other{% endif %}">
+              {{ loop.index }}
+            </span>
+          </td>
+          <td><span class="dim-badge" style="background:#7c3aed;">{% if item.house_secd_nm %}{{ item.house_secd_nm }}{% else %}잔여{% endif %}</span></td>
+          <td class="text-left">
+            <strong>{{ item.name }}</strong>
+            {% if item.builder and item.builder != '-' %}
+            <br><span style="font-size:10px;color:#6b7280;">{{ item.builder }}</span>
+            {% endif %}
+          </td>
+          <td class="text-left" style="font-size:11px;">{{ item.region }}</td>
+          <td>{{ item.units }}</td>
+          <td style="font-size:11px;">{% if item.avg_price_per_pyung and item.avg_price_per_pyung > 0 %}{{ "{:,.0f}".format(item.avg_price_per_pyung) }}만원{% else %}-{% endif %}</td>
+          <td style="font-size:11px;">{{ item.market_price_str }}</td>
+          <td>
+            {% if item.discount_rate is not none %}
+              {{ "%.1f"|format(item.discount_rate) }}%
+            {% else %}
+              -
+            {% endif %}
+          </td>
+          <td class="score-cell" style="color:{{ item.score_color }};">
+            {% if item.total_score is not none %}
+              {{ "%.0f"|format(item.total_score) }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
+        </tr>
+        {% if item.units_table %}
+        <tr class="sub-table-row">
+          <td colspan="9" style="padding:0;">
+            <table class="units-table">
+              <thead>
+                <tr>
+                  <th style="width:50px;">주택형</th>
+                  <th style="width:50px;">공급면적</th>
+                  <th>분양가</th>
+                  <th>평당분양가</th>
+                  <th>세대수</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for unit in item.units_table %}
+                <tr>
+                  <td>{% if unit.house_type %}{{ unit.house_type }}{% else %}일반{% endif %}</td>
+                  <td>{% if unit.supply_area %}{{ unit.supply_area }}m²{% else %}-{% endif %}</td>
+                  <td>{{ unit.price_str }}</td>
+                  <td>{% if unit.price_per_pyung > 0 %}{{ "{:,}".format(unit.price_per_pyung) }}만원{% else %}-{% endif %}</td>
+                  <td>{% if unit.households > 0 %}{{ unit.households }}세대{% else %}-{% endif %}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+    <div style="margin:-8px 0 8px 0;padding:6px 10px;background:#f9fafb;border-radius:4px;font-size:11px;color:#6b7280;">
+      잔여세대는 일반 분양과 별도 순위로 평가됩니다. 평가기준: 할인율(41%) + 교통입지(35%) + 브랜드(18%) + 규모(6%)
+    </div>
     {% endif %}
 
     {% if lh_listings %}
@@ -397,7 +483,7 @@ table.units-table tbody tr:last-child td {
     <div class="footer">
       <h3>📋 참고사항</h3>
       <p>• 본 보고서는 공공데이터포털 OpenAPI 기반으로 작성되었습니다.</p>
-      <p>• 유망도 점수는 분양가할인율(35%), 교통/입지(30%), 시공사브랜드(15%), 청약경쟁률(15%), 공급규모(5%)를 종합하여 산출합니다.</p>
+      <p>• 유망도 점수는 분양가할인율(41%), 교통/입지(35%), 시공사브랜드(18%), 공급규모(6%)를 종합하여 산출합니다.</p>
       <p>• 데이터 출처: 청약홈, LH, SH, 국토교통부 실거래가</p>
       <p>• 본 정보는 참고용이며, 투자 결정은 본인의 판단에 따라 신중히 이루어져야 합니다.</p>
       <p>• 특정 상품에 대한 매수 추천이 아님을 밝힙니다.</p>

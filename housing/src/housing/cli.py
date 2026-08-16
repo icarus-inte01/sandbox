@@ -443,16 +443,25 @@ def cmd_all(args: argparse.Namespace) -> None:
     from src.housing.analyzer.ranker import rank_listings, top_n
 
     scored = calculate_scores_batch(housing_active, config)
-    ranked = rank_listings(scored)
-    top = top_n(ranked, n=20)
 
-    logger.info("Analyzed: %d active listings, showing top %d", len(ranked), len(top))
+    # 일반 분양과 잔여세대(무순위/재공급)는 별도 순위로 평가/표시
+    general_listings = [l for l in scored if not l.is_remaining]
+    remaining_listings = [l for l in scored if l.is_remaining]
+    top = top_n(rank_listings(general_listings), n=20)
+    remaining_top = top_n(rank_listings(remaining_listings), n=10)
+
+    logger.info("Analyzed: 일반 분양 %d건(상위 %d 표시), 잔여세대 %d건(상위 %d 표시)",
+                len(general_listings), len(top), len(remaining_listings), len(remaining_top))
     t_step = _log_step_time("Step 2: Analyze/ranking", t_step)
 
     # Step 3: Report
     from src.housing.reporter.email_renderer import render_report
     report_date = datetime.now().strftime("%Y-%m-%d")
-    html = render_report(top, report_date, kamco_listings=kamco_listings, lh_listings=lh_listings)
+    html = render_report(
+        top, report_date,
+        remaining_listings=remaining_top,
+        kamco_listings=kamco_listings, lh_listings=lh_listings,
+    )
     t_step = _log_step_time("Step 3: Report 렌더링", t_step)
 
     _write_and_maybe_send(html, args)

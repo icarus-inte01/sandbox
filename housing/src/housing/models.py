@@ -34,10 +34,12 @@ class SaleListing:
     region: str                           # 공급 위치 (시/도 + 시/군/구)
     supply_type: SupplyType = SupplyType.OTHER  # 분양유형
     status: SaleStatus = SaleStatus.PLANNED     # 분양상태
+    is_remaining: bool = False            # 잔여세대(무순위/재공급) 여부 — 일반 분양과 분리 평가
     units: int = 0                        # 공급세대수
     price: int = 0                        # 분양금액 (만원 단위)
     market_price: int = 0                 # 인근 실거래가 참고가 (만원 단위)
     builder: str = ""                     # 시공사/건설사
+    house_secd_nm: str = ""               # 주택구분코드명 (잔여세대: 무순위/불법행위 재공급 등)
     supply_purpose: str = ""              # 공급용도 (토지: 점포겸용/준주거/근린생활시설용지 등)
     pyeong_type: str = ""                 # 주택형/전용면적 정보
     competition_rate: float = 0.0         # 청약경쟁률
