@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Optional
 
 from src.housing.collectors.base import BaseCollector
@@ -61,17 +61,26 @@ class MolitTradeCollector(BaseCollector):
         if mock:
             return self._mock_trades(lawd_cd, year_month)
 
-        # 실제 API 호출 (XML 파싱)
+        # numOfRows 상한(1,000) 초과분은 pageNo 루프로 수집
         params = {
             "LAWD_CD": lawd_cd,
             "DEAL_YMD": year_month,
             "pageNo": 1,
-            "numOfRows": 100,
+            "numOfRows": 1000,
         }
-
+        all_trades: list[TradeRecord] = []
         try:
-            xml_text = self.client.fetch_text(MOLIT_API_URL, params)
-            return self._parse_trades_xml(xml_text, lawd_cd, year_month)
+            while True:
+                xml_text = self.client.fetch_text(MOLIT_API_URL, params)
+                trades, total_count = self._parse_trades_xml(xml_text, lawd_cd, year_month)
+                all_trades.extend(trades)
+                # totalCount를 알 수 없거나 마지막 페이지면 종료
+                if total_count is None or not trades:
+                    break
+                if params["pageNo"] * params["numOfRows"] >= total_count:
+                    break
+                params["pageNo"] += 1
+            return all_trades
         except Exception as e:
             logger.error("Failed to fetch trades for %s/%s: %s", lawd_cd, year_month, e)
             return []
@@ -109,30 +118,36 @@ class MolitTradeCollector(BaseCollector):
         all_trades: list[TradeRecord] = []
         today = datetime.now()
 
-        for i in range(months_back):
-            ym = (today - timedelta(days=30 * i)).strftime("%Y%m")
+        # timedelta(days=30*i)는 월 경계에서 누락/중복 발생 → 달력 월 기준 역산
+        year, month = today.year, today.month
+        for _ in range(months_back):
+            ym = f"{year:04d}{month:02d}"
             trades = self.collect_trades(region_code, ym)
             # 면적 필터링
             for t in trades:
                 if area_min <= t.area <= area_max:
                     all_trades.append(t)
+            month -= 1
+            if month == 0:
+                year, month = year - 1, 12
 
         return self._aggregate_trades(all_trades, region_code)
 
     def _parse_trades_xml(
         self, xml_text: str, lawd_cd: str, year_month: str
-    ) -> list[TradeRecord]:
-        """XML 응답에서 TradeRecord 리스트를 추출합니다.
+    ) -> tuple[list[TradeRecord], Optional[int]]:
+        """XML 응답에서 TradeRecord 리스트와 totalCount를 추출합니다.
 
-        응답 구조: <response><header>..</header><body><items><item>...</item></items></body></response>
+        응답 구조: <response><header>..</header><body><items><item>...</item></items><totalCount>N</totalCount></body></response>
         (국토부 실거래가 API는 XML만 반환 — JSON 강제 파싱 시 실패하므로 fetch_text() 사용)
         """
         trades: list[TradeRecord] = []
+        total_count: Optional[int] = None
         try:
             root = ET.fromstring(xml_text)
         except ET.ParseError as e:
             logger.error("MOLIT XML parse error for %s/%s: %s", lawd_cd, year_month, e)
-            return trades
+            return trades, total_count
 
         header = root.find("header")
         if header is not None:
@@ -142,17 +157,23 @@ class MolitTradeCollector(BaseCollector):
                     "MOLIT API error for %s/%s: code=%s msg=%s",
                     lawd_cd, year_month, result_code, header.findtext("resultMsg"),
                 )
-                return trades
+                return trades, total_count
 
         body = root.find("body")
         if body is None:
-            return trades
+            return trades, total_count
+        tc_text = body.findtext("totalCount")
+        if tc_text is not None:
+            try:
+                total_count = int(tc_text.strip())
+            except ValueError:
+                total_count = None
         items_container = body.find("items")
         if items_container is None:
-            return trades
+            return trades, total_count
         items = items_container.findall("item")
         if not items:
-            return trades
+            return trades, total_count
 
         for item in items:
             try:
@@ -172,7 +193,7 @@ class MolitTradeCollector(BaseCollector):
                 logger.debug("Skipping invalid trade record: %s", e)
                 continue
 
-        return trades
+        return trades, total_count
 
     def _parse_price(self, price_str: str) -> int:
         """거래금액 문자열을 정수(만원)로 변환합니다.

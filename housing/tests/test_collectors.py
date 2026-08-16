@@ -108,5 +108,68 @@ class TestMolitCollector:
         assert c._parse_price("5억5000") == 55000
         assert c._parse_price("") == 0
 
+    def test_parse_trades_xml_with_total_count(self):
+        """XML 파싱 시 totalCount 추출."""
+        c = MolitTradeCollector()
+        xml = """<?xml version="1.0" encoding="UTF-8"?>
+<response>
+  <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+  <body>
+    <items>
+      <item>
+        <aptNm>테스트아파트</aptNm><dealAmount>50,000</dealAmount>
+        <excluUseAr>84.9</excluUseAr><dealDay>15</dealDay>
+        <floor>10</floor><buildYear>2020</buildYear><umdNm>테스트동</umdNm>
+      </item>
+      <item>
+        <aptNm>테스트아파트2</aptNm><dealAmount>60,000</dealAmount>
+        <excluUseAr>59.9</excluUseAr><dealDay>20</dealDay>
+        <floor>5</floor><buildYear>2021</buildYear><umdNm>테스트동</umdNm>
+      </item>
+    </items>
+    <totalCount>250</totalCount>
+  </body>
+</response>"""
+        trades, total = c._parse_trades_xml(xml, "11110", "202606")
+        assert len(trades) == 2
+        assert total == 250
+
+    def test_parse_trades_xml_no_total_count(self):
+        """totalCount 없는 응답 → None 반환."""
+        c = MolitTradeCollector()
+        xml = """<?xml version="1.0" encoding="UTF-8"?>
+<response>
+  <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+  <body><items/></body>
+</response>"""
+        trades, total = c._parse_trades_xml(xml, "11110", "202606")
+        assert trades == []
+        assert total is None
+
+    def test_collect_trades_pagination(self, monkeypatch):
+        """1,000건 초과 시 pageNo 루프로 전체 수집."""
+        c = MolitTradeCollector()
+        page_calls: list[int] = []
+
+        def fake_fetch_text(url: str, params: dict):
+            page_calls.append(params["pageNo"])
+            item_xml = "".join(
+                f"<item><aptNm>아파트{i}</aptNm><dealAmount>{10000 + i}</dealAmount>"
+                f"<excluUseAr>84.9</excluUseAr><dealDay>1</dealDay><floor>1</floor>"
+                f"<buildYear>2020</buildYear><umdNm>동</umdNm></item>"
+                for i in range(3)
+            )
+            # numOfRows=1,000 하드코딩이므로 1,000건 초과(1,500건) 시나리오로 2페이지 호출 검증
+            return f"""<?xml version="1.0" encoding="UTF-8"?>
+<response>
+  <header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header>
+  <body><items>{item_xml}</items><totalCount>1500</totalCount></body>
+</response>"""
+
+        monkeypatch.setattr(c.client, "fetch_text", fake_fetch_text)
+        trades = c.collect_trades("11110", "202606")
+        assert len(trades) == 6  # 3건 × 2페이지
+        assert page_calls == [1, 2]  # 1,500건 중 1,000건 초과 → 2페이지까지만 호출
+
 
 
