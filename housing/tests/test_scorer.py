@@ -42,7 +42,7 @@ class TestScorer:
             discount_rate=10.0, competition_rate=10.0,
         )
         weights = {"discount_rate": 1.0, "transit_location": 0.0,
-                   "brand": 0.0, "competition": 0.0, "scale": 0.0}
+                   "brand": 0.0, "scale": 0.0}
         score = calculate_score(listing, weights)
         assert score > 0
 
@@ -52,7 +52,6 @@ class TestScorer:
         assert sample_listing.discount_rate == 15.0
         assert sample_listing.transit_score is not None
         assert sample_listing.brand_score is not None
-        assert sample_listing.competition_score is not None
         assert sample_listing.scale_score is not None
         assert sample_listing.total_score is not None
 

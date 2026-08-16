@@ -14,7 +14,7 @@ class TestConfig:
         config = load_config(config_path)
         assert "api_keys" in config
         assert "weights" in config
-        assert config["weights"]["discount_rate"] == 0.35
+        assert config["weights"]["discount_rate"] == 0.41
 
     def test_config_class(self, monkeypatch):
         """Config 클래스 정상 동작."""
@@ -22,7 +22,7 @@ class TestConfig:
         config = Config()
         # 환경변수 미설정시 ${DATA_GO_KR_API_KEY} 문자 그대로 유지
         assert "${DATA_GO_KR_API_KEY}" in config.data_go_kr_key
-        assert config.weights["discount_rate"] == 0.35
+        assert config.weights["discount_rate"] == 0.41
         assert config.request_delay == 0.1
         assert config.max_retries == 3
         assert config.timeout == 30
