@@ -602,8 +602,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     # all (E2E)
     p_all = subparsers.add_parser("all", help="전체 파이프라인 실행")
-    p_all.add_argument("--output", default="output/report.html",
-                       help="리포트 출력 경로 (기본: output/report.html)")
+    p_all.add_argument("--output", default="docs/housing/index.html",
+                       help="리포트 출력 경로 (기본: docs/housing/index.html)")
     p_all.add_argument("--source", choices=list(COLLECTOR_MAP.keys()) + ["all"],
                        default="all", help="수집 소스 (기본: all)")
     p_all.add_argument("--send-email", action="store_true",
