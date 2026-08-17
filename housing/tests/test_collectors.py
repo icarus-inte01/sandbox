@@ -108,6 +108,33 @@ class TestMolitCollector:
         assert c._parse_price("5억5000") == 55000
         assert c._parse_price("") == 0
 
+    def test_aggregate_trades_by_dong(self):
+        """동 단위 집계: umdNm별 avg_price_per_area 분리."""
+        c = MolitTradeCollector()
+        from src.housing.models import TradeRecord
+        trades = [
+            TradeRecord(apartment_name="A", price=10000, area=50.0,
+                        contract_date="202606", floor=1, build_year=2020,
+                        region_code="11560", region_name="신길동"),
+            TradeRecord(apartment_name="B", price=20000, area=100.0,
+                        contract_date="202606", floor=2, build_year=2020,
+                        region_code="11560", region_name="신길동"),
+            TradeRecord(apartment_name="C", price=30000, area=100.0,
+                        contract_date="202606", floor=3, build_year=2020,
+                        region_code="11560", region_name="대림동"),
+        ]
+        agg = c._aggregate_trades(trades, "11560")
+        by_dong = agg["by_dong"]
+        assert set(by_dong) == {"신길동", "대림동"}
+        # 신길동: 2건, 평균 단가 = (10000/50 + 20000/100)/2 = (200+200)/2 = 200
+        assert by_dong["신길동"]["trade_count"] == 2
+        assert abs(by_dong["신길동"]["avg_price_per_area"] - 200.0) < 1e-9
+        # 대림동: 1건, 평균 단가 = 300
+        assert by_dong["대림동"]["trade_count"] == 1
+        assert abs(by_dong["대림동"]["avg_price_per_area"] - 300.0) < 1e-9
+        # 전체 평균도 유지
+        assert agg["trade_count"] == 3
+
     def test_parse_trades_xml_with_total_count(self):
         """XML 파싱 시 totalCount 추출."""
         c = MolitTradeCollector()

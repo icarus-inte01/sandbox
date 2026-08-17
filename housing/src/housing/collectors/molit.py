@@ -226,11 +226,34 @@ class MolitTradeCollector(BaseCollector):
                 "max_price": 0,
                 "trade_count": 0,
                 "trades": [],
+                "by_dong": {},
                 "region_code": region_code,
             }
 
         prices = [t.price for t in trades]
         prices_per_area = [t.price / t.area for t in trades if t.area > 0]
+
+        # 읍/면/동 단위 집계 (umdNm 기준)
+        dong_prices: dict[str, list[int]] = {}
+        dong_prices_per_area: dict[str, list[float]] = {}
+        for t in trades:
+            dong = t.region_name
+            if not dong:
+                continue
+            dong_prices.setdefault(dong, []).append(t.price)
+            if t.area > 0:
+                dong_prices_per_area.setdefault(dong, []).append(t.price / t.area)
+        by_dong = {
+            dong: {
+                "avg_price": sum(ps) / len(ps),
+                "avg_price_per_area": (
+                    sum(dong_prices_per_area[dong]) / len(dong_prices_per_area[dong])
+                    if dong in dong_prices_per_area else 0
+                ),
+                "trade_count": len(ps),
+            }
+            for dong, ps in dong_prices.items()
+        }
 
         return {
             "avg_price": sum(prices) / len(prices),
@@ -239,6 +262,7 @@ class MolitTradeCollector(BaseCollector):
             "max_price": max(prices),
             "trade_count": len(trades),
             "trades": trades,
+            "by_dong": by_dong,
             "region_code": region_code,
         }
 
@@ -247,18 +271,18 @@ class MolitTradeCollector(BaseCollector):
         # 지역코드에 따른 Mock 데이터
         mock_by_region = {
             "11110": [  # 서울 종로구
-                {"apt": "경희궁자이", "price": 85000, "area": 84.9, "floor": 12, "year": 2022},
-                {"apt": "경희궁자이", "price": 82000, "area": 74.8, "floor": 8, "year": 2022},
-                {"apt": "돈의문센트레빌", "price": 72000, "area": 84.9, "floor": 15, "year": 2020},
+                {"apt": "경희궁자이", "price": 85000, "area": 84.9, "floor": 12, "year": 2022, "dong": "청운동"},
+                {"apt": "경희궁자이", "price": 82000, "area": 74.8, "floor": 8, "year": 2022, "dong": "청운동"},
+                {"apt": "돈의문센트레빌", "price": 72000, "area": 84.9, "floor": 15, "year": 2020, "dong": "세종로"},
             ],
             "11680": [  # 서울 강남구
-                {"apt": "은마아파트", "price": 150000, "area": 84.5, "floor": 5, "year": 1988},
-                {"apt": "도곡렉슬", "price": 180000, "area": 84.9, "floor": 18, "year": 2002},
-                {"apt": "대치아이파크", "price": 195000, "area": 84.9, "floor": 22, "year": 2006},
+                {"apt": "은마아파트", "price": 150000, "area": 84.5, "floor": 5, "year": 1988, "dong": "대치동"},
+                {"apt": "도곡렉슬", "price": 180000, "area": 84.9, "floor": 18, "year": 2002, "dong": "도곡동"},
+                {"apt": "대치아이파크", "price": 195000, "area": 84.9, "floor": 22, "year": 2006, "dong": "대치동"},
             ],
             "41130": [  # 경기 성남시
-                {"apt": "판교푸르지오", "price": 98000, "area": 84.9, "floor": 10, "year": 2010},
-                {"apt": "판교더샵", "price": 102000, "area": 84.9, "floor": 7, "year": 2012},
+                {"apt": "판교푸르지오", "price": 98000, "area": 84.9, "floor": 10, "year": 2010, "dong": "백현동"},
+                {"apt": "판교더샵", "price": 102000, "area": 84.9, "floor": 7, "year": 2012, "dong": "판교동"},
             ],
         }
 
@@ -272,7 +296,7 @@ class MolitTradeCollector(BaseCollector):
                 floor=int(raw_item["floor"]),
                 build_year=int(raw_item["year"]),
                 region_code=lawd_cd,
-                region_name="",
+                region_name=str(raw_item["dong"]),
             ))
         return trades
 

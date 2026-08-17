@@ -310,15 +310,16 @@ def cmd_all(args: argparse.Namespace) -> None:
         "712": "47110",
     }
 
-    from src.housing.analyzer.region_data import address_to_lawd_cd
+    from src.housing.analyzer.region_data import address_to_lawd_cd, address_to_dong_name
 
-    # 1단계: 각 listing의 주소에서 시/군/구 단위 법정동코드 추출
+    # 1단계: 각 listing의 주소에서 시/군/구 법정동코드와 읍/면/동 이름 추출
     listing_lawd_cds: set[str] = set()
     for listing in housing_active:
         lawd_cd = address_to_lawd_cd(listing.region)
         if not lawd_cd:
             lawd_cd = APPLYHOME_CODE_TO_LAWD.get(listing.region_code, "")
         listing.lawd_cd = lawd_cd
+        listing.dong_name = address_to_dong_name(listing.region)
         if lawd_cd:
             listing_lawd_cds.add(lawd_cd)
     t_step = _log_step_time("Molit 1단계: 법정동코드 추출", t_step)
@@ -396,6 +397,25 @@ def cmd_all(args: argparse.Namespace) -> None:
             }
     t_step = _log_step_time("Molit 2c: sido_fallback 계산", t_step)
 
+    def _match_dong_prices(nearby: dict[str, Any], dong_name: str, address: str) -> dict[str, Any] | None:
+        """동별 시세에서 listing의 읍/면/동과 일치하는 항목을 찾습니다.
+
+        umdNm은 "신길동" 형태(정확 일치) 또는 "초월읍 쌍동리"처럼
+        읍/면명+리명 형태이므로, 후자는 주소에 읍/면명과 리명이
+        각각 포함되는지로 판별합니다.
+        """
+        by_dong = nearby.get("by_dong", {})
+        if not by_dong:
+            return None
+        if dong_name in by_dong:
+            return by_dong[dong_name]
+        if not address:
+            return None
+        for key, prices in by_dong.items():
+            if all(part in address for part in key.split()):
+                return prices
+        return None
+
     def _apply_market_price(listing: Any, price_data: dict[str, Any]) -> None:
         avg_price_per_area = price_data.get("avg_price_per_area", 0)
         if avg_price_per_area <= 0:
@@ -421,13 +441,21 @@ def cmd_all(args: argparse.Namespace) -> None:
             if rate is not None:
                 listing.discount_rate = rate
 
-    # 3단계: 각 listing을 해당 법정동코드의 실거래가와 매칭 (㎡당 단가 기준)
+    # 3단계: 각 listing을 해당 법정동코드의 실거래가와 매칭 (동 단위 우선, 시/군/구 폴백)
     if molit_available:
         for listing in housing_active:
             lawd_cd = getattr(listing, "lawd_cd", "")
             if lawd_cd and lawd_cd in all_nearby_prices:
                 nearby = all_nearby_prices[lawd_cd]
-                if nearby.get("trade_count", 0) > 0:
+                dong_name = getattr(listing, "dong_name", "")
+                dong_prices = _match_dong_prices(nearby, dong_name, listing.region)
+                if dong_prices and dong_prices.get("trade_count", 0) > 0:
+                    logger.info("  [dong] %s: %s 동 단위 시세 (%d건)",
+                                listing.name, dong_name, dong_prices["trade_count"])
+                    _apply_market_price(listing, dong_prices)
+                elif nearby.get("trade_count", 0) > 0:
+                    logger.info("  [sigungu] %s: 동 매칭 실패 → 시/군/구 평균 (%d건)",
+                                listing.name, nearby["trade_count"])
                     _apply_market_price(listing, nearby)
                 else:
                     sido_key = LAWD_PREFIX_TO_DO.get(lawd_cd[:2], "")

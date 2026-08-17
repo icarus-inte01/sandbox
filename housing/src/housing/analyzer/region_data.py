@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import re
 from typing import Optional
 
 # 청약홈(Applyhome) 3-digit SUBSCRPT_AREA_CODE → 시/도 이름
@@ -630,3 +631,18 @@ def address_to_lawd_cd(address: str) -> str:
             return SIGUNGU_TO_LAWD[key]
 
     return ""
+
+
+def address_to_dong_name(address: str) -> str:
+    """주소 문자열에서 읍/면/동 이름을 추출합니다.
+
+    Args:
+        address: "서울특별시 영등포구 신길동 413-8번지 일원" 형태의 주소
+
+    Returns:
+        읍/면/동 이름 문자열, 또는 빈 문자열(매칭 실패)
+    """
+    if not address:
+        return ""
+    m = re.search(r"([가-힣]+(?:읍|면|동)\d*가?)", address)
+    return m.group(1) if m else ""
