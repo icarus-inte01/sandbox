@@ -17,6 +17,7 @@ import requests
 
 from src.housing.analyzer.price_comparator import score_from_discount
 from src.housing.analyzer.region_data import get_region_score
+from src.housing.collectors.land_trade import LandTradeCollector
 from src.housing.config import Config
 from src.housing.models import SaleListing
 
@@ -487,79 +488,49 @@ def calculate_land_scores_batch(
     region_overrides = config.region_score_overrides
     service_key = config.vworld_api_key
 
-    # 중복 제거된 PNU 리스트
     pnu_list = sorted({
         listing.raw_data.get("pnu", "")
         for listing in listings
         if listing.raw_data.get("pnu")
     })
 
-    # 공시지가 조회 (vworld.kr)
     official_prices: dict[str, Optional[int]] = {}
-    fetcher: Optional[LandPriceFetcher] = None
-    if service_key and not service_key.startswith("${"):
-        fetcher = LandPriceFetcher(service_key, config.request_delay)
+    pnu_to_listing = {}
+    for listing in listings:
+        pnu = listing.raw_data.get("pnu", "")
+        if pnu and pnu not in pnu_to_listing:
+            pnu_to_listing[pnu] = listing
+
+    trade_collector = LandTradeCollector(config)
+    for pnu in pnu_list:
         try:
-            official_prices = fetcher.fetch_batch(pnu_list, max_workers=1)
-            n_ok = sum(1 for v in official_prices.values() if v is not None)
-            logger.info(
-                "Land price fetched: %d/%d OK", n_ok, len(official_prices),
-            )
-
-            # 2차 시도: 본번/부번=0000 PNU를 리스팅 주소 지번으로 재구성
-            pnu_to_listing = {}
-            for listing in listings:
-                pnu = listing.raw_data.get("pnu", "")
-                if pnu and official_prices.get(pnu) is None and pnu not in pnu_to_listing:
-                    pnu_to_listing[pnu] = listing
-
-            reconstructed = {}
-            for pnu, listing in pnu_to_listing.items():
-                new_pnu = LandPriceFetcher.reconstruct_pnu(pnu, listing.name or "")
-                if new_pnu and new_pnu != pnu:
-                    reconstructed[pnu] = new_pnu
-
-            if reconstructed:
-                recon_prices = fetcher.fetch_batch(list(reconstructed.values()), max_workers=1)
-                for orig_pnu, recon_pnu in reconstructed.items():
-                    price = recon_prices.get(recon_pnu)
-                    if price is not None and price > 0:
-                        official_prices[orig_pnu] = price
-                n_recon = sum(
-                    1 for p in reconstructed if official_prices.get(p) is not None
-                )
+            trade_data = trade_collector.collect(pnu)
+            if trade_data and trade_data.get("avg_price_per_m2"):
+                official_prices[pnu] = trade_data["avg_price_per_m2"]
                 logger.info(
-                    "Land price reconstructed: %d/%d OK", n_recon, len(reconstructed),
+                    "Land trade price for PNU=%s: %d원/㎡ (%d건)",
+                    pnu, trade_data["avg_price_per_m2"], trade_data.get("trade_count", 0),
                 )
-
-            # 3차 시도: 감정평가액 기반 추정
-            for pnu, listing in pnu_to_listing.items():
-                if official_prices.get(pnu) is not None:
-                    continue
-                appraisal = listing.raw_data.get("appraisal_value", 0) or 0
-                area = listing.units or 0
-                estimated = LandPriceFetcher.estimate_price_from_appraisal(
-                    int(appraisal), int(area),
-                )
-                if estimated is not None:
-                    official_prices[pnu] = estimated
-                    logger.info(
-                        "Estimated from appraisal for PNU=%s: %d원/㎡",
-                        pnu, estimated,
-                    )
-
-            n_total = sum(1 for v in official_prices.values() if v is not None)
-            logger.info(
-                "Land price final: %d/%d OK", n_total, len(official_prices),
-            )
         except Exception as exc:
-            logger.error("Land price batch fetch failed: %s", exc)
-        finally:
-            fetcher.close()
-    else:
-        logger.warning(
-            "VWORLD_API_KEY not set — 공시지가 항목 50점(중립) 처리",
-        )
+            logger.debug("Land trade fetch failed for PNU=%s: %s", pnu, exc)
+
+    n_trade = sum(1 for v in official_prices.values() if v is not None)
+    logger.info("Land trade: %d/%d OK", n_trade, len(pnu_list))
+
+    still_missing = [pnu for pnu in pnu_list if official_prices.get(pnu) is None]
+    for pnu in still_missing:
+        listing = pnu_to_listing.get(pnu)
+        if not listing:
+            continue
+        appraisal = listing.raw_data.get("appraisal_value", 0) or 0
+        area = listing.units or 0
+        estimated = LandPriceFetcher.estimate_price_from_appraisal(int(appraisal), int(area))
+        if estimated is not None:
+            official_prices[pnu] = estimated
+            logger.info("Appraisal estimate for PNU=%s: %d원/㎡", pnu, estimated)
+
+    n_final = sum(1 for v in official_prices.values() if v is not None)
+    logger.info("Land price final: %d/%d OK", n_final, len(pnu_list))
 
     for listing in listings:
         pnu = listing.raw_data.get("pnu", "")
