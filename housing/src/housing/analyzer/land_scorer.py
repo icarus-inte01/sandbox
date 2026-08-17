@@ -500,7 +500,7 @@ def calculate_land_scores_batch(
     if service_key and not service_key.startswith("${"):
         fetcher = LandPriceFetcher(service_key, config.request_delay)
         try:
-            official_prices = fetcher.fetch_batch(pnu_list)
+            official_prices = fetcher.fetch_batch(pnu_list, max_workers=1)
             n_ok = sum(1 for v in official_prices.values() if v is not None)
             logger.info(
                 "Land price fetched: %d/%d OK", n_ok, len(official_prices),
@@ -520,7 +520,7 @@ def calculate_land_scores_batch(
                     reconstructed[pnu] = new_pnu
 
             if reconstructed:
-                recon_prices = fetcher.fetch_batch(list(reconstructed.values()))
+                recon_prices = fetcher.fetch_batch(list(reconstructed.values()), max_workers=1)
                 for orig_pnu, recon_pnu in reconstructed.items():
                     price = recon_prices.get(recon_pnu)
                     if price is not None and price > 0:
