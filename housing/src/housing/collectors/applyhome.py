@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
@@ -190,6 +191,13 @@ class ApplyhomeCollector(BaseCollector):
                     # 평당분양가 계산 (price는 만원, supply_area는 m²)
                     for u in listing.units_info:
                         area = u.get("supply_area")
+                        # SUPLY_AR가 비어 있으면 house_type에서 면적 파싱 (예: "084.5396A" → 84.5396)
+                        if not area:
+                            ht = u.get("house_type", "")
+                            m = re.search(r"(\d+\.?\d*)", ht)
+                            if m:
+                                area = m.group(1)
+                                u["supply_area"] = area
                         if area:
                             try:
                                 a = float(area)

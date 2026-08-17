@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import time as _time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date
 from typing import Any, Optional
 
 import requests
@@ -30,6 +32,7 @@ DEFAULT_LAND_WEIGHTS: dict[str, float] = {
 }
 
 # vworld.kr 개별공시지가 API (국토교통부 국가공간정보센터)
+# API 문서: https://www.vworld.kr/dtna/dtna_apiSvcFc_s001.do?pageIndex=1&searchApiGbn=&searchGrpSeq=&searchKeyword=%EA%B3%B5%EC%8B%9C%EC%A7%80%EA%B0%80&apiNum=25
 LAND_PRICE_API_URL = "https://api.vworld.kr/ned/data/getIndvdLandPriceAttr"
 
 
@@ -50,6 +53,7 @@ class LandPriceFetcher:
         })
         self._cache: dict[str, Optional[int]] = {}
         self._last_request = 0.0
+        self._lock = threading.Lock()
 
     @staticmethod
     def _normalize_pnu(pnu: str) -> str:
@@ -62,16 +66,19 @@ class LandPriceFetcher:
             return pnu[:10] + '1' + pnu[11:]
         return pnu
 
-    def fetch(self, pnu: str, year: int = 2025) -> Optional[int]:
+    def fetch(self, pnu: str, year: Optional[int] = None) -> Optional[int]:
         """단일 PNU의 개별공시지가를 조회합니다.
 
         Args:
             pnu: 19자리 PNU 코드
-            year: 기준년도 (기본 2025)
+            year: 기준년도 (None이면 자동 계산)
 
         Returns:
             ㎡당 공시지가 (원) 또는 None (조회 실패)
         """
+        if year is None:
+            today = date.today()
+            year = today.year - 1 if today.month >= 3 else today.year - 2
         if not pnu or len(pnu) < 19:
             return None
 
@@ -90,44 +97,62 @@ class LandPriceFetcher:
             "pageNo": "1",
         }
 
-        elapsed = _time.time() - self._last_request
-        if elapsed < self._request_delay:
-            _time.sleep(self._request_delay - elapsed)
+        max_retries = 3
+        for attempt in range(max_retries):
+            with self._lock:
+                elapsed = _time.time() - self._last_request
+                if elapsed < self._request_delay:
+                    _time.sleep(self._request_delay - elapsed)
+                self._last_request = _time.time()
 
-        try:
-            self._last_request = _time.time()
-            resp = self._session.get(LAND_PRICE_API_URL, params=params, timeout=30)
-            resp.raise_for_status()
-            result = resp.json()
-            price = self._parse_response(result)
-            self._cache[cache_key] = price
-            return price
-        except requests.exceptions.HTTPError as exc:
-            status = exc.response.status_code if exc.response is not None else 0
-            logger.warning("Land price fetch failed (HTTP %d) for PNU=%s", status, pnu)
-            self._cache[cache_key] = None
-            return None
-        except Exception as exc:
-            logger.warning("Land price fetch failed for PNU=%s: %s", pnu, exc)
-            self._cache[cache_key] = None
-            return None
+            try:
+                resp = self._session.get(LAND_PRICE_API_URL, params=params, timeout=30)
+                resp.raise_for_status()
+                result = resp.json()
+                price = self._parse_response(result)
+                self._cache[cache_key] = price
+                return price
+            except requests.exceptions.HTTPError as exc:
+                status = exc.response.status_code if exc.response is not None else 0
+                if status in (502, 503, 504) and attempt < max_retries - 1:
+                    _time.sleep(1.0 * (attempt + 1))
+                    logger.debug("Retrying PNU=%s (HTTP %d, attempt %d/%d)", pnu, status, attempt + 1, max_retries)
+                    continue
+                logger.warning("Land price fetch failed (HTTP %d) for PNU=%s", status, pnu)
+                self._cache[cache_key] = None
+                return None
+            except requests.exceptions.ConnectionError as exc:
+                if attempt < max_retries - 1:
+                    _time.sleep(1.0 * (attempt + 1))
+                    logger.debug("Retrying PNU=%s (ConnectionError, attempt %d/%d)", pnu, attempt + 1, max_retries)
+                    continue
+                logger.warning("Land price fetch failed for PNU=%s: %s", pnu, exc)
+                self._cache[cache_key] = None
+                return None
+            except Exception as exc:
+                logger.warning("Land price fetch failed for PNU=%s: %s", pnu, exc)
+                self._cache[cache_key] = None
+                return None
 
     def fetch_batch(
         self,
         pnu_list: list[str],
-        year: int = 2025,
+        year: Optional[int] = None,
         max_workers: int = 3,
     ) -> dict[str, Optional[int]]:
         """여러 PNU의 공시지가를 병렬로 조회합니다.
 
         Args:
             pnu_list: PNU 코드 리스트
-            year: 기준년도
+            year: 기준년도 (None이면 전년도)
             max_workers: 병렬 작업 수 (기본 3)
 
         Returns:
             {pnu: 공시지가(원/㎡) 또는 None} 맵
         """
+        if year is None:
+            today = date.today()
+            year = today.year - 1 if today.month >= 3 else today.year - 2
         results: dict[str, Optional[int]] = {}
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
@@ -402,6 +427,8 @@ def calculate_land_score(
         discount_rate_val = round(
             (appraisal - min_bid_price_won) / appraisal * 100.0, 1,
         )
+    elif appraisal > 0 and usbd_nft > 0:
+        discount_rate_val = -float(usbd_nft)
     listing.discount_rate = discount_rate_val
     listing.transit_score = location_score
     listing.scale_score = scale_score

@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import date, timedelta
 from typing import Any, Optional
 
 from src.housing.collectors.base import BaseCollector
@@ -94,6 +95,10 @@ class OnbidCollector(BaseCollector):
         return results
 
     def _fetch_items(self, region: str) -> list[dict[str, Any]]:
+        today = date.today()
+        start_date = today.strftime("%Y%m%d")
+        end_date = (today + timedelta(days=7)).strftime("%Y%m%d")
+
         params: dict[str, Any] = {
             "pageNo": 1,
             "numOfRows": self.PAGE_SIZE,
@@ -104,6 +109,8 @@ class OnbidCollector(BaseCollector):
             "cltrUsgSclsCtgrId": CLTR_USG_SCLS_CTGR_ID,
             "dspsMthodCd": "0001",
             "bidDivCd": "0001",
+            "bidPrdYmdStart": start_date,
+            "bidPrdYmdEnd": end_date,
             "lctnSdnm": region,
         }
 
@@ -136,7 +143,13 @@ class OnbidCollector(BaseCollector):
             if page >= total_pages:
                 break
 
-        return all_items
+        # 사이트와 동일한 필터: 입찰마감일(cltrBidEndDt) 기준7일 이내
+        filtered_items = [
+            item for item in all_items
+            if (item.get("cltrBidEndDt", "9999")[:8] >= start_date
+                and item.get("cltrBidEndDt", "0000")[:8] <= end_date)
+        ]
+        return filtered_items
 
     def _to_listing(self, item: dict[str, Any]) -> Optional[SaleListing]:
         """API 응답 아이템을 SaleListing으로 변환.
