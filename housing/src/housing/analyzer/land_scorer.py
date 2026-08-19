@@ -16,7 +16,7 @@ from typing import Any, Optional
 import requests
 
 from src.housing.analyzer.price_comparator import score_from_discount
-from src.housing.analyzer.region_data import get_region_score
+from src.housing.analyzer.region_data import address_to_lawd_cd, get_region_score
 from src.housing.collectors.land_trade import LandTradeCollector
 from src.housing.config import Config
 from src.housing.models import SaleListing
@@ -231,11 +231,11 @@ class LandPriceFetcher:
             area_m2: 토지 면적 (㎡)
 
         Returns:
-            추정 ㎡당 공시지가 (원) 또는 None
+            추정 ㎡당 공시지가 (만원) 또는 None
         """
         if appraisal_value <= 0 or area_m2 <= 0:
             return None
-        return int(appraisal_value / area_m2 * 0.7)
+        return int(appraisal_value / area_m2 / 10000 * 0.7)
 
     def close(self) -> None:
         self._session.close()
@@ -494,6 +494,8 @@ def calculate_land_scores_batch(
         if listing.raw_data.get("pnu")
     })
 
+    pnu_less_listings = [l for l in listings if not l.raw_data.get("pnu")]
+
     official_prices: dict[str, Optional[int]] = {}
     pnu_to_listing = {}
     for listing in listings:
@@ -508,14 +510,31 @@ def calculate_land_scores_batch(
             if trade_data and trade_data.get("avg_price_per_m2"):
                 official_prices[pnu] = trade_data["avg_price_per_m2"]
                 logger.info(
-                    "Land trade price for PNU=%s: %d원/㎡ (%d건)",
+                    "Land trade price for PNU=%s: %d만원/㎡ (%d건)",
                     pnu, trade_data["avg_price_per_m2"], trade_data.get("trade_count", 0),
                 )
         except Exception as exc:
             logger.debug("Land trade fetch failed for PNU=%s: %s", pnu, exc)
 
+    for listing in pnu_less_listings:
+        region = listing.region or ""
+        lawd_cd = address_to_lawd_cd(region)
+        if not lawd_cd:
+            continue
+        try:
+            trade_data = trade_collector.collect(lawd_cd)
+            if trade_data and trade_data.get("avg_price_per_m2"):
+                listing.raw_data["_lawd_price"] = trade_data["avg_price_per_m2"]
+                logger.info(
+                    "Land trade price for LAWD_CD=%s (PNU 없음): %d만원/㎡ (%d건)",
+                    lawd_cd, trade_data["avg_price_per_m2"], trade_data.get("trade_count", 0),
+                )
+        except Exception as exc:
+            logger.debug("Land trade fetch failed for LAWD_CD=%s: %s", lawd_cd, exc)
+
     n_trade = sum(1 for v in official_prices.values() if v is not None)
-    logger.info("Land trade: %d/%d OK", n_trade, len(pnu_list))
+    n_pnu_less = sum(1 for l in pnu_less_listings if l.raw_data.get("_lawd_price"))
+    logger.info("Land trade: %d/%d OK (PNU 보유), %d/%d OK (PNU 없음)", n_trade, len(pnu_list), n_pnu_less, len(pnu_less_listings))
 
     still_missing = [pnu for pnu in pnu_list if official_prices.get(pnu) is None]
     for pnu in still_missing:
@@ -527,7 +546,7 @@ def calculate_land_scores_batch(
         estimated = LandPriceFetcher.estimate_price_from_appraisal(int(appraisal), int(area))
         if estimated is not None:
             official_prices[pnu] = estimated
-            logger.info("Appraisal estimate for PNU=%s: %d원/㎡", pnu, estimated)
+            logger.info("Appraisal estimate for PNU=%s: %d만원/㎡", pnu, estimated)
 
     n_final = sum(1 for v in official_prices.values() if v is not None)
     logger.info("Land price final: %d/%d OK", n_final, len(pnu_list))
@@ -535,6 +554,8 @@ def calculate_land_scores_batch(
     for listing in listings:
         pnu = listing.raw_data.get("pnu", "")
         op = official_prices.get(pnu) if pnu else None
+        if op is None:
+            op = listing.raw_data.get("_lawd_price")
         calculate_land_score(listing, weights, region_overrides, op)
 
     return listings

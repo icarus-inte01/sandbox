@@ -32,7 +32,7 @@ class LandTradeCollector(BaseCollector):
         self,
         pnu: str,
         year: Optional[int] = None,
-        months: int = 6,
+        months: int = 3,
     ) -> Optional[dict[str, Any]]:
         """토지 실거래가를 조회합니다.
 
