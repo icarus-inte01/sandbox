@@ -40,11 +40,18 @@ class FileCache:
     def _cache_path(self, key: str) -> Path:
         return self._cache_dir / f"{key}.json"
 
-    def get(self, url: str, params: Optional[dict[str, Any]] = None) -> Optional[Any]:
+    def get(
+        self, url: str, params: Optional[dict[str, Any]] = None,
+        ignore_ttl: bool = False,
+    ) -> Optional[Any]:
         """캐시에서 데이터를 조회합니다.
 
+        Args:
+            ignore_ttl: True면 유효기간이 지난 캐시도 반환합니다.
+                (API 장애 시 최후의 수단으로 stale 데이터를 쓰기 위함)
+
         Returns:
-            캐시 데이터 (유효기간 내) 또는 None
+            캐시 데이터 (유효기간 내, 또는 ignore_ttl=True면 무관) 또는 None
         """
         key = self._make_key(url, params)
         path = self._cache_path(key)
@@ -52,17 +59,18 @@ class FileCache:
         if not path.exists():
             return None
 
-        # 유효기간 확인
+        # 유효기간 확인. 만료된 파일도 삭제하지 않고 남겨둔다 —
+        # API 장애 시 ignore_ttl=True로 동일 파일을 stale fallback으로 읽어야 하기 때문.
+        # (오래된 파일 정리는 clear_old()가 별도로 담당)
         mtime = path.stat().st_mtime
-        if time.time() - mtime > self._ttl_seconds:
+        if not ignore_ttl and time.time() - mtime > self._ttl_seconds:
             logger.debug("Cache expired: %s", key)
-            path.unlink(missing_ok=True)
             return None
 
         try:
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
-            logger.debug("Cache hit: %s", key)
+            logger.debug("Cache hit%s: %s", " (stale)" if ignore_ttl else "", key)
             return data
         except (json.JSONDecodeError, OSError) as e:
             logger.warning("Cache read error: %s - %s", key, e)
@@ -115,7 +123,10 @@ class FileCache:
 class NullCache:
     """캐시를 사용하지 않는 더미 구현 (테스트용)."""
 
-    def get(self, url: str, params: Optional[dict[str, Any]] = None) -> Optional[Any]:
+    def get(
+        self, url: str, params: Optional[dict[str, Any]] = None,
+        ignore_ttl: bool = False,
+    ) -> Optional[Any]:
         return None
 
     def set(self, url: str, data: Any, params: Optional[dict[str, Any]] = None) -> None:

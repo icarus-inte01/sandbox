@@ -25,7 +25,6 @@ class BaseCollector(ABC):
 
     def __init__(self, config: Optional[Any] = None):
         self.config = config if config is not None else Config()
-        self.client = OdcloudClient(self.config)
         if self.config.cache_enabled:
             self.cache = FileCache(
                 cache_dir=self.config.cache_dir,
@@ -33,6 +32,7 @@ class BaseCollector(ABC):
             )
         else:
             self.cache = NullCache()
+        self.client = OdcloudClient(self.config, cache=self.cache)
         self.source_name: str = "base"
 
     @abstractmethod

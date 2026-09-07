@@ -23,7 +23,9 @@ land_weights:
 api:
   request_delay: 0.1     # 요청 간 지연(초)
   max_retries: 3
-  timeout: 30            # 타임아웃(초)
+  timeout: 30            # 응답 타임아웃(초)
+  connect_timeout: 5     # 커넥션 타임아웃(초) — 응답 지연이 아닌 연결 불가 상황을 빠르게 감지
+  circuit_breaker_threshold: 2  # 연속 요청 실패 횟수 — 이 이상이면 이후 요청은 즉시 차단(fail-fast)
   per_page: 100          # 페이지당 건수
 
 # 캐시 설정

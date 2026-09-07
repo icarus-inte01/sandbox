@@ -140,8 +140,11 @@ def render_report(
         else:
             market_price_str = "-"
 
+        dtl_url = listing.raw_data.get("dtl_url", "") if listing.raw_data else ""
+
         return {
             "name": listing.name,
+            "dtl_url": dtl_url,
             "region": listing.region,
             "supply_type": listing.supply_type,
             "supply_type_kr": _supply_type_kr(listing.supply_type),

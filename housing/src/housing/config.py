@@ -86,6 +86,14 @@ class Config:
         return self._config.get("api", {}).get("timeout", 30)
 
     @property
+    def connect_timeout(self) -> float:
+        return self._config.get("api", {}).get("connect_timeout", 5)
+
+    @property
+    def circuit_breaker_threshold(self) -> int:
+        return self._config.get("api", {}).get("circuit_breaker_threshold", 2)
+
+    @property
     def per_page(self) -> int:
         return self._config.get("api", {}).get("per_page", 100)
 

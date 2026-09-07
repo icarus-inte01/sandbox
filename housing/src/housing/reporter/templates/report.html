@@ -220,7 +220,11 @@ table.units-table tbody tr:last-child td {
           </td>
           <td>{{ item.supply_type_kr }}</td>
           <td class="text-left">
+            {% if item.dtl_url %}
+            <a href="{{ item.dtl_url }}" target="_blank" style="color:#1a365d;text-decoration:underline;">{{ item.name }}</a>
+            {% else %}
             <strong>{{ item.name }}</strong>
+            {% endif %}
             {% if item.builder and item.builder != '-' %}
             <br><span style="font-size:10px;color:#6b7280;">{{ item.builder }}</span>
             {% endif %}
@@ -310,7 +314,11 @@ table.units-table tbody tr:last-child td {
           </td>
           <td><span class="dim-badge" style="background:#7c3aed;">{% if item.house_secd_nm %}{{ item.house_secd_nm }}{% else %}잔여{% endif %}</span></td>
           <td class="text-left">
+            {% if item.dtl_url %}
+            <a href="{{ item.dtl_url }}" target="_blank" style="color:#1a365d;text-decoration:underline;">{{ item.name }}</a>
+            {% else %}
             <strong>{{ item.name }}</strong>
+            {% endif %}
             {% if item.builder and item.builder != '-' %}
             <br><span style="font-size:10px;color:#6b7280;">{{ item.builder }}</span>
             {% endif %}

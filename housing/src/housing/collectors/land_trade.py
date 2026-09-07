@@ -26,7 +26,7 @@ class LandTradeCollector(BaseCollector):
     def __init__(self, config: Optional[Any] = None):
         super().__init__(config)
         self.source_name = "land_trade"
-        self.client = OdcloudClient(config)
+        self.client = OdcloudClient(self.config, cache=self.cache)
 
     def collect(
         self,

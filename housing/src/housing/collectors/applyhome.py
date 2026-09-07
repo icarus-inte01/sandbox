@@ -459,6 +459,7 @@ class ApplyhomeCollector(BaseCollector):
             region_name = location.split()[0] if location else ""
 
         units_info = item.get("units_info") or []
+        homepage_url = item.get("HMPG_ADRES") or item.get("hmpg_adres") or ""
 
         return SaleListing(
             name=name,
@@ -473,6 +474,7 @@ class ApplyhomeCollector(BaseCollector):
             region_code=region_code,
             announcement_date=announcement_date,
             source="applyhome",
+            raw_data={"dtl_url": homepage_url},
             units_info=units_info,
         )
 

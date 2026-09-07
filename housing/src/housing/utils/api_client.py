@@ -12,8 +12,13 @@ from urllib.parse import urlencode
 import requests
 
 from src.housing.config import Config
+from src.housing.utils.cache import NullCache
 
 logger = logging.getLogger(__name__)
+
+
+class ApiUnavailableError(RuntimeError):
+    """API에 연결할 수 없을 때 발생 (재시도 소진 또는 서킷 오픈)."""
 
 
 class OdcloudClient:
@@ -30,10 +35,15 @@ class OdcloudClient:
         data = client.fetch_all("https://api.odcloud.kr/api/...", {"page": 1})
     """
 
-    def __init__(self, config: Optional[Config] = None):
+    def __init__(self, config: Optional[Config] = None, cache: Optional[Any] = None):
         self.config = config or Config()
         self._service_key = self.config.data_go_kr_key
         self._last_request_time = 0.0
+        self._cache = cache if cache is not None else NullCache()
+        # 서킷 브레이커: 연속 요청 실패가 threshold에 도달하면
+        # 이후 요청은 네트워크 시도 없이 즉시 차단 (API 전체 장애 시 15분 타임아웃 방지)
+        self._consecutive_failures = 0
+        self._circuit_open = False
         self._session = requests.Session()
         # 기본 헤더
         self._session.headers.update({
@@ -56,25 +66,29 @@ class OdcloudClient:
         method: str = "GET",
     ) -> requests.Response:
         """내부 요청 메서드 (재시도 포함)."""
+        if self._circuit_open:
+            raise ApiUnavailableError(
+                f"Circuit open ({self._consecutive_failures} consecutive failures) — "
+                f"skipping request: {url}"
+            )
+
         if params is None:
             params = {}
         params["serviceKey"] = self._service_key
 
         self._wait_rate_limit()
 
+        timeout = (self.config.connect_timeout, self.config.timeout)
         last_exc: Optional[Exception] = None
         for attempt in range(1, self.config.max_retries + 1):
             try:
                 self._last_request_time = time.time()
                 if method == "GET":
-                    resp = self._session.get(
-                        url, params=params, timeout=self.config.timeout
-                    )
+                    resp = self._session.get(url, params=params, timeout=timeout)
                 else:
-                    resp = self._session.post(
-                        url, data=params, timeout=self.config.timeout
-                    )
+                    resp = self._session.post(url, data=params, timeout=timeout)
                 resp.raise_for_status()
+                self._consecutive_failures = 0
                 return resp
             except requests.RequestException as e:
                 last_exc = e
@@ -84,7 +98,19 @@ class OdcloudClient:
                 )
                 if attempt < self.config.max_retries:
                     time.sleep(2 ** attempt)  # exponential backoff
-        raise RuntimeError(f"API request failed after {self.config.max_retries} retries: {url}") from last_exc
+
+        self._consecutive_failures += 1
+        if self._consecutive_failures >= self.config.circuit_breaker_threshold:
+            self._circuit_open = True
+            logger.error(
+                "Circuit breaker opened after %d consecutive failed requests "
+                "(host likely unreachable) — remaining requests in this run will "
+                "fail fast and fall back to cache.",
+                self._consecutive_failures,
+            )
+        raise ApiUnavailableError(
+            f"API request failed after {self.config.max_retries} retries: {url}"
+        ) from last_exc
 
     def fetch(
         self,
@@ -93,20 +119,54 @@ class OdcloudClient:
     ) -> dict[str, Any]:
         """단일 페이지 요청 후 JSON 응답을 반환합니다.
 
+        캐시(TTL 이내)가 있으면 이를 우선 사용하고, API 요청이 실패하면
+        만료된 캐시라도 최후의 수단으로 사용합니다 (stale fallback).
+
         Returns:
             파싱된 JSON 딕셔너리
         """
-        resp = self._request(url, params)
-        return resp.json()
+        cached = self._cache.get(url, params)
+        if cached is not None:
+            return cached
+
+        try:
+            resp = self._request(url, params)
+            data = resp.json()
+        except ApiUnavailableError:
+            stale = self._cache.get(url, params, ignore_ttl=True)
+            if stale is not None:
+                logger.warning("API unavailable — using stale cache: %s", url)
+                return stale
+            raise
+
+        self._cache.set(url, data, params)
+        return data
 
     def fetch_text(
         self,
         url: str,
         params: dict[str, Any] | None = None,
     ) -> str:
-        """단일 페이지 요청 후 XML/텍스트 응답을 반환합니다."""
-        resp = self._request(url, params)
-        return resp.text
+        """단일 페이지 요청 후 XML/텍스트 응답을 반환합니다.
+
+        캐시/stale fallback 동작은 fetch()와 동일합니다.
+        """
+        cached = self._cache.get(url, params)
+        if cached is not None:
+            return cached
+
+        try:
+            resp = self._request(url, params)
+            text = resp.text
+        except ApiUnavailableError:
+            stale = self._cache.get(url, params, ignore_ttl=True)
+            if stale is not None:
+                logger.warning("API unavailable — using stale cache: %s", url)
+                return stale
+            raise
+
+        self._cache.set(url, text, params)
+        return text
 
     def fetch_all(
         self,
