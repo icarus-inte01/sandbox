@@ -207,8 +207,8 @@ _HTML_TEMPLATE = """\
 <div class="wrapper">
   <table cellpadding="0" cellspacing="0">
     <tr><td class="header">
-      <h1>🌐 World News Digest</h1>
-      <p class="sub">{date} &middot; 7 regions &middot; Tavily</p>
+      <h1>🌐 오늘의 국제뉴스</h1>
+      <p class="sub">{date} &middot; 국내 언론 국제부 종합</p>
     </td></tr>
     <tr><td class="content">
       <table cellpadding="0" cellspacing="0">

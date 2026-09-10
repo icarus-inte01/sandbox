@@ -44,7 +44,7 @@ jobs:
         run: |
           set +e
           python main.py \
-            --max-results 5 \
+            --limit 15 \
             --output email \
             --html-output news_digest.html \
             --email-url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
@@ -53,8 +53,6 @@ jobs:
           echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
           echo "=== stderr (run_log.txt) ==="
           cat run_log.txt
-        env:
-          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
 
       - name: Send email
         uses: dawidd6/action-send-mail@v3

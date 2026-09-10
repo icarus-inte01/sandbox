@@ -1,29 +1,18 @@
-# news2 — 지역별 뉴스 쿼리 설정
-# Tavily Search API는 topic="news" 사용 시 country 파라미터 무시
-# → 쿼리에 지역명을 직접 포함하여 필터링
+# news2 — 국내 언론사 국제부 RSS 피드 설정
+# Tavily 대신 국내 언론사가 직접 제공하는 국제뉴스 RSS를 사용한다.
+# (한국어 원문이라 번역이 필요 없고, 특정 지역에 편중되지 않는다)
 
-regions:
-  asia:
-    query: "Asia major news today"
-  europe:
-    query: "Europe major news today"
-  north_america:
-    query: "North America major news today"
-  south_america:
-    query: "South America major news today"
-  africa:
-    query: "Africa major news today"
-  oceania:
-    query: "Oceania Australia major news today"
-  middle_east:
-    query: "Middle East major news today"
+feeds:
+  - url: "https://www.yna.co.kr/rss/international.xml"
+    source: "연합뉴스"
+  - url: "http://www.hani.co.kr/rss/international/"
+    source: "한겨레"
+  - url: "https://www.khan.co.kr/rss/rssdata/kh_world.xml"
+    source: "경향신문"
+  - url: "https://www.mk.co.kr/rss/30300018/"
+    source: "매일경제"
+  - url: "https://www.hankyung.com/feed/international"
+    source: "한국경제"
 
-# 기본값: 모든 지역
-default_regions:
-  - asia
-  - europe
-  - north_america
-  - south_america
-  - africa
-  - oceania
-  - middle_east
+# 다이제스트에 포함할 최대 기사 수 (매체별로 비례 배분)
+digest_limit: 15
