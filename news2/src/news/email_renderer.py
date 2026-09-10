@@ -236,7 +236,15 @@ def render(md_path: str, html_path: str, run_url: str = "", date_str: str = "") 
 
     # CSS 인라인화: Naver Mail 등 <style>을 제거하는 클라이언트 대응
     try:
+        import logging
+
         from premailer import transform
+
+        # cssutils(premailer 내부 의존)가 linear-gradient 같은 CSS3 문법을
+        # CSS 2.1 기준으로 검사하며 무해한 ERROR 로그를 남기므로 조용히 처리
+        logging.getLogger("premailer").setLevel(logging.CRITICAL)
+        logging.getLogger("CSSUTILS").setLevel(logging.CRITICAL)
+
         html = transform(html)
     except ImportError:
         pass
