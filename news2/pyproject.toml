@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "news2"
+version = "0.1.0"
+description = "Tavily 기반 뉴스 수집기"
+requires-python = ">=3.10"
+dependencies = [
+    "tavily-python>=0.5.0",
+    "pyyaml>=6.0",
+    "premailer>=3.10.0",
+]
+
+[project.scripts]
+news2 = "news.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

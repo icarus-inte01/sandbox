@@ -6,7 +6,7 @@ on:
 
 env:
   PYTHON_VERSION: '3.12'
-  WORKING_DIR: news
+  WORKING_DIR: news2
 
 jobs:
   fetch-and-summarize:
@@ -44,9 +44,7 @@ jobs:
         run: |
           set +e
           python main.py \
-            --provider zen \
-            --model big-pickle \
-            --limit 15 \
+            --max-results 5 \
             --output email \
             --html-output news_digest.html \
             --email-url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
@@ -56,9 +54,7 @@ jobs:
           echo "=== stderr (run_log.txt) ==="
           cat run_log.txt
         env:
-          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
 
       - name: Send email
         uses: dawidd6/action-send-mail@v3

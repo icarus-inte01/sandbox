@@ -1,0 +1,29 @@
+# news2 — 지역별 뉴스 쿼리 설정
+# Tavily Search API는 topic="news" 사용 시 country 파라미터 무시
+# → 쿼리에 지역명을 직접 포함하여 필터링
+
+regions:
+  asia:
+    query: "Asia major news today"
+  europe:
+    query: "Europe major news today"
+  north_america:
+    query: "North America major news today"
+  south_america:
+    query: "South America major news today"
+  africa:
+    query: "Africa major news today"
+  oceania:
+    query: "Oceania Australia major news today"
+  middle_east:
+    query: "Middle East major news today"
+
+# 기본값: 모든 지역
+default_regions:
+  - asia
+  - europe
+  - north_america
+  - south_america
+  - africa
+  - oceania
+  - middle_east
