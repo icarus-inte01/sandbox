@@ -6,11 +6,13 @@ import json
 import re
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import yaml
 
 from . import email_renderer
+from . import full_text
 from . import rss_fetcher
 from . import scoring
 from .models import Article
@@ -27,23 +29,50 @@ def load_config(config_path: str = "config.yaml") -> dict:
         return yaml.safe_load(f)
 
 
-def _clean_snippet(snippet: str, limit: int = 200) -> str:
+_SENTENCE_END_RE = re.compile(r"[.!?](?=\s|$)")
+
+
+def _clean_snippet(snippet: str, limit: int = 280) -> str:
     """RSS description을 한 줄 텍스트로 정리.
 
     RSS description은 HTML 태그(이미지 썸네일 등)를 포함하는 경우가 많고,
     email_renderer는 마크다운을 줄 단위로 파싱하므로 개행이 남아 있으면
-    안 된다. HTML 태그 제거 → 개행을 공백으로 접기 → 길이 제한 순으로 처리한다.
-    일부 속보성 기사는 description이 "(" 한 글자뿐인 경우가 있어, 너무 짧은
-    텍스트는 의미 없는 것으로 보고 빈 문자열을 반환한다.
+    안 된다. HTML 태그 제거 → 개행을 공백으로 접기 순으로 처리한 뒤,
+    limit 글자 근처의 문장 경계(마침표/물음표/느낌표)에서 잘라 문장이
+    중간에 뚝 끊기지 않게 한다. 일부 속보성 기사는 description이 "(" 한
+    글자뿐인 경우가 있어, 너무 짧은 텍스트는 의미 없는 것으로 보고 빈
+    문자열을 반환한다.
     """
     text = re.sub(r"<[^>]+>", " ", snippet)
     text = html.unescape(text)
     text = " ".join(text.split())
     if len(text) < 5:
         return ""
-    if len(text) > limit:
-        text = text[:limit] + "..."
-    return text
+    if len(text) <= limit:
+        return text
+
+    # limit 근처(앞뒤 여유 포함)에서 문장 경계를 찾아 완전한 문장으로 마무리
+    window = text[: limit + 100]
+    ends = [m.end() for m in _SENTENCE_END_RE.finditer(window) if m.end() >= limit * 0.5]
+    if ends:
+        boundary = next((e for e in ends if e >= limit), ends[-1])
+        return window[:boundary].strip()
+
+    return text[:limit].rstrip() + "..."
+
+
+def enrich_with_full_text(articles: list[Article], max_workers: int = 5) -> None:
+    """선정된 기사들의 snippet을 원문 페이지에서 뽑은 본문으로 교체한다.
+
+    RSS 미리보기가 언론사 자체적으로 짧게 잘려있는 경우가 많아, 최종
+    선정된 소수(예: 15건)에 한해서만 원문 페이지를 가져와 실제 본문
+    앞부분으로 바꾼다. 실패하면 원래 RSS snippet을 그대로 둔다.
+    """
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        bodies = list(pool.map(lambda a: full_text.fetch_body(a.url), articles))
+    for art, body in zip(articles, bodies):
+        if body:
+            art.snippet = body
 
 
 def print_articles(articles: list[Article]):
@@ -128,6 +157,11 @@ def main():
         default="",
         help='URL for the "View in browser" link in email output.',
     )
+    parser.add_argument(
+        "--no-full-text",
+        action="store_true",
+        help="선정된 기사 원문 페이지에서 본문을 가져오지 않고 RSS 미리보기만 사용",
+    )
 
     args = parser.parse_args()
 
@@ -144,6 +178,10 @@ def main():
     print(f"✅ 총 {len(all_articles)}건 수집", file=sys.stderr)
 
     selected = scoring.select_top_stories(all_articles, limit)
+
+    if not args.no_full_text:
+        print(f"📄 선정된 {len(selected)}건의 원문 본문 추출 중...", file=sys.stderr)
+        enrich_with_full_text(selected)
 
     if args.output == "json":
         output = format_json_output(selected)
